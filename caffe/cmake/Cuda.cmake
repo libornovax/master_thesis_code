@@ -154,6 +154,8 @@ macro(caffe_cuda_compile objlist_variable)
     list(APPEND CUDA_NVCC_FLAGS -Xcompiler -Wno-unused-function)
   endif()
 
+  list(APPEND CUDA_NVCC_FLAGS -std=c++11)
+
   cuda_compile(cuda_objcs ${ARGN})
 
   foreach(var CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_RELEASE CMAKE_CXX_FLAGS_DEBUG)
@@ -233,6 +235,8 @@ endfunction()
 
 find_package(CUDA 5.5 QUIET)
 find_cuda_helper_libs(curand)  # cmake 2.8.7 compartibility which doesn't search for curand
+
+cuda_include_directories( /home.stud/novakli2/software/thirdparty/cudnn/include )
 
 if(NOT CUDA_FOUND)
   return()
