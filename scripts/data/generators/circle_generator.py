@@ -9,7 +9,7 @@ filename label confidence xmin ymin xmax ymax
 ...
 
 ----------------------------------------------------------------------------------------------------
-python circle_generator.py 
+python circle_generator.py path_out dataset_size width height radius
 ----------------------------------------------------------------------------------------------------
 """
 
@@ -38,7 +38,6 @@ class CircleGenerator(object):
 		self.circle_radius = int(circle_radius)
 
 		self.image_counter = 0
-		self.dataset_labels = []
 
 
 	def create_dataset(self, path, size):
@@ -53,13 +52,12 @@ class CircleGenerator(object):
 			os.makedirs(path)
 
 		path_bbtxt = os.path.join(path, 'annotations.bbtxt')
-
 		with open(path_bbtxt, 'w') as outfile:
 			# Generate the images
 			for i in range(size):
 				image, labels = self._generate_image(path)
 
-				self.dataset_labels.append(labels)
+				# Write image
 				cv2.imwrite(labels['path'], image)
 
 				# Write out labels
