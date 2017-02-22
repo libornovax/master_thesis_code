@@ -58,12 +58,19 @@ protected:
      */
     void _buildAccumulator (const Blob<Dtype> *labels);
 
+    /**
+     * @brief Applies a random mask to diffs to ensure the 1:1 ratio of positive and negative samples
+     */
+    void _applyMask ();
+
 
     // ---------------------------------------  PROTECTED MEMBERS  --------------------------------------- //
     // Hough map - accumulator of object centers (shape of the blob is the same as bottom[0])
     Blob<Dtype> _accumulator;
     // Diff of the accumulator and the net output - saved for backpropagation
     Blob<Dtype> _diff;
+    // Random number generator
+    shared_ptr<Caffe::RNG> _rng;
 
 };
 

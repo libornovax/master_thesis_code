@@ -5,6 +5,7 @@
 
 #include "caffe/layers/accumulator_loss_layer.hpp"
 #include "caffe/util/math_functions.hpp"
+#include "caffe/util/rng.hpp"
 
 
 namespace caffe {
@@ -14,7 +15,8 @@ template <typename Dtype>
 AccumulatorLossLayer<Dtype>::AccumulatorLossLayer(const LayerParameter& param)
     : LossLayer<Dtype>(param),
       _accumulator(),
-      _diff()
+      _diff(),
+      _rng(new Caffe::RNG(caffe_rng_rand()))
 {
 }
 
@@ -40,6 +42,12 @@ void AccumulatorLossLayer<Dtype>::Forward_cpu (const vector<Blob<Dtype>*> &botto
     // Now it is a simple squared Euclidean distance of the net output and the accumulator
     int count = bottom[0]->count();
     caffe_sub(count, bottom[0]->cpu_data(), this->_accumulator.cpu_data(), this->_diff.mutable_cpu_data());
+
+    // Apply mask - we only want to include the same number of negative pixels as positive ones because
+    // otherwise the learning would be skewed towards learning mostly negative examples. Thus we create
+    // a random mask on the negative examples to ensure 1:1 ratio of positive and negative examples
+    this->_applyMask();
+
     Dtype dot = caffe_cpu_dot(count, _diff.cpu_data(), _diff.cpu_data());
     Dtype loss = dot / bottom[0]->num() / Dtype(2); // Divide by the number of images - per image loss
 
@@ -95,11 +103,39 @@ void AccumulatorLossLayer<Dtype>::_buildAccumulator (const Blob<Dtype> *labels)
             cv::circle(acc, cv::Point(scale*(data[1]+data[3])/2, scale*(data[2]+data[4])/2), radius,
                        cv::Scalar(1), -1);
         }
-
-
     }
 }
 
+
+template <typename Dtype>
+void AccumulatorLossLayer<Dtype>::_applyMask ()
+{
+    // Apply mask - we only want to include the same number of negative pixels as positive ones because
+    // otherwise the learning would be skewed towards learning mostly negative examples. Thus we create
+    // a random mask on the negative examples to ensure 1:1 ratio of positive and negative examples
+
+    // The number of positive samples is the number of 1s in the accumulator
+    Dtype num_positive = caffe_cpu_asum(this->_accumulator.count(), this->_accumulator.cpu_data());
+
+    caffe::rng_t* rng = static_cast<caffe::rng_t*>(this->_rng->generator());
+    boost::random::uniform_int_distribution<> dist(0, this->_accumulator.count());
+
+    Dtype* data_diff              = this->_diff.mutable_cpu_data();
+    const Dtype* data_accumulator = this->_accumulator.cpu_data();
+
+    for (int i = 0; i < this->_diff.count(); ++i)
+    {
+        // If this is a negative sample -> randomly choose if we mask this diff out or not
+        if (*data_accumulator == Dtype(0.0f) && dist(*rng) > num_positive)
+        {
+            // Mask it out
+            *data_diff = Dtype(0.0f);
+        }
+
+        data_diff++;
+        data_accumulator++;
+    }
+}
 
 
 // ----------------------------------------  LAYER INSTANTIATION  ---------------------------------------- //
