@@ -176,7 +176,7 @@ void BBTXTDataLayer<Dtype>::_loadBBTXTFile ()
     {
         // Split the line - entries separated by space [filename label confidence xmin ymin xmax ymax]
         boost::split(data, line, boost::is_any_of(" "));
-        CHECK_EQ(data.size(), 5) << "Line '" << line << "' corrupted!";
+        CHECK_EQ(data.size(), 7) << "Line '" << line << "' corrupted!";
 
         if (current_filename != data[0])
         {
@@ -196,6 +196,7 @@ void BBTXTDataLayer<Dtype>::_loadBBTXTFile ()
             this->_images.push_back(std::make_pair(data[0],
                                         std::make_shared<Blob<Dtype>>(MAX_NUM_BBS_PER_IMAGE, 5, 1, 1)));
             i = 0;
+            current_filename = data[0];
         }
 
         // Write the bounding box info into the blob
@@ -208,6 +209,7 @@ void BBTXTDataLayer<Dtype>::_loadBBTXTFile ()
             bb_position[2] = Dtype(std::stof(data[4])); // ymin
             bb_position[3] = Dtype(std::stof(data[5])); // xmax
             bb_position[4] = Dtype(std::stof(data[6])); // ymax
+            i++;
         }
         else
         {

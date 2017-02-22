@@ -17,7 +17,9 @@
 #include "caffe/layers/base_data_layer.hpp"
 #include "caffe/proto/caffe.pb.h"
 
+
 namespace caffe {
+
 
 /**
  * @brief The BBTXTDataLayer class
@@ -79,5 +81,6 @@ protected:
 
 
 }  // namespace caffe
+
 
 #endif  // CAFFE_BBTXT_DATA_LAYER_HPP_
