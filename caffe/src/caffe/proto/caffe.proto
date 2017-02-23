@@ -414,11 +414,16 @@ message LayerParameter {
 // Added by Libor Novak
 // Parameters for the accumulator loss layer
 message AccumulatorLossParameter {
-  // Radius of the circle, which is created in the center of each bounding box
-  // in the target accumulator
+  // Radius of the circle, which is created in the center of each bounding
+  // box in the target accumulator
   optional int32 radius = 1 [default = 1];
-  // How many times is the accumulator downsampled with respect to the input image
+  // How many times is the accumulator downsampled with respect to the input
+  // image
   optional int32 downsampling = 2 [default = 4];
+  // The ratio of negative:positive (negative_ratio:1) samples (pixels) in
+  // the accumulator, which are included in the computation of the loss
+  // and back-propagation
+  optional float negative_ratio = 3 [default = 2.0];
 }
 
 // Message that stores parameters used to apply transformation

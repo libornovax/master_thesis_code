@@ -59,7 +59,7 @@ protected:
     void _buildAccumulator (const Blob<Dtype> *labels);
 
     /**
-     * @brief Applies a random mask to diffs to ensure the 1:1 ratio of positive and negative samples
+     * @brief Applies a random mask to diffs to ensure the required ratio of positive and negative samples
      * @return Number of active samples
      */
     Dtype _applyMask();

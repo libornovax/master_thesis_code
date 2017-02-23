@@ -43,9 +43,8 @@ void AccumulatorLossLayer<Dtype>::Forward_cpu (const vector<Blob<Dtype>*> &botto
     int count = bottom[0]->count();
     caffe_sub(count, bottom[0]->cpu_data(), this->_accumulator.cpu_data(), this->_diff.mutable_cpu_data());
 
-    // Apply mask - we only want to include the same number of negative pixels as positive ones because
-    // otherwise the learning would be skewed towards learning mostly negative examples. Thus we create
-    // a random mask on the negative examples to ensure 1:1 ratio of positive and negative examples
+    // Apply mask - we only want to include some number of negative pixels because otherwise the learning
+    // would be skewed towards learning mostly negative examples
     Dtype num_active = this->_applyMask();
 
     Dtype dot = caffe_cpu_dot(count, _diff.cpu_data(), _diff.cpu_data());
@@ -82,7 +81,7 @@ void AccumulatorLossLayer<Dtype>::_buildAccumulator (const Blob<Dtype> *labels)
     // Radius of the circle drawn in the center of the bounding box
     const int radius = this->layer_param_.accumulator_loss_param().radius();
     // Scale of the accumulator with respect to the original image - to adjust the circle centers
-    const double scale = 1.0 / this->layer_param_.accumulator_loss_param().downsampling();;
+    const double scale = 1.0 / this->layer_param_.accumulator_loss_param().downsampling();
 
     const int height = this->_accumulator.shape(2);
     const int width  = this->_accumulator.shape(3);
@@ -112,12 +111,14 @@ void AccumulatorLossLayer<Dtype>::_buildAccumulator (const Blob<Dtype> *labels)
 template <typename Dtype>
 Dtype AccumulatorLossLayer<Dtype>::_applyMask ()
 {
-    // Apply mask - we only want to include the same number of negative pixels as positive ones because
-    // otherwise the learning would be skewed towards learning mostly negative examples. Thus we create
-    // a random mask on the negative examples to ensure 1:1 ratio of positive and negative examples
+    // Apply mask - we only want to include the given ratio of negative pixels with respect to the positive
+    // ones because otherwise the learning would be skewed towards learning mostly negative examples. Thus
+    // we create a random mask on the negative examples to ensure the negative:positive ratio of samples
+    // given by the layer parameters
 
     // The number of positive samples is the number of 1s in the accumulator
-    Dtype num_positive = caffe_cpu_asum(this->_accumulator.count(), this->_accumulator.cpu_data());
+    const int num_positive = caffe_cpu_asum(this->_accumulator.count(), this->_accumulator.cpu_data());
+    const int num_negative = num_positive * this->layer_param_.accumulator_loss_param().negative_ratio();
 
     caffe::rng_t* rng = static_cast<caffe::rng_t*>(this->_rng->generator());
     boost::random::uniform_int_distribution<> dist(0, this->_accumulator.count());
@@ -128,7 +129,7 @@ Dtype AccumulatorLossLayer<Dtype>::_applyMask ()
     for (int i = 0; i < this->_diff.count(); ++i)
     {
         // If this is a negative sample -> randomly choose if we mask this diff out or not
-        if (*data_accumulator == Dtype(0.0f) && dist(*rng) > num_positive)
+        if (*data_accumulator == Dtype(0.0f) && dist(*rng) > num_negative)
         {
             // Mask it out
             *data_diff = Dtype(0.0f);
@@ -138,7 +139,8 @@ Dtype AccumulatorLossLayer<Dtype>::_applyMask ()
         data_accumulator++;
     }
 
-    return Dtype(2) * num_positive;
+    // The number of active samples (pixels) is the sum of positive and negative ones
+    return Dtype(num_positive + num_negative);
 }
 
 
