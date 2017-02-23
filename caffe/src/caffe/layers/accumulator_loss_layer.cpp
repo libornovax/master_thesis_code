@@ -46,10 +46,10 @@ void AccumulatorLossLayer<Dtype>::Forward_cpu (const vector<Blob<Dtype>*> &botto
     // Apply mask - we only want to include the same number of negative pixels as positive ones because
     // otherwise the learning would be skewed towards learning mostly negative examples. Thus we create
     // a random mask on the negative examples to ensure 1:1 ratio of positive and negative examples
-    this->_applyMask();
+    Dtype num_active = this->_applyMask();
 
     Dtype dot = caffe_cpu_dot(count, _diff.cpu_data(), _diff.cpu_data());
-    Dtype loss = dot / bottom[0]->num() / Dtype(2); // Divide by the number of images - per image loss
+    Dtype loss = dot / bottom[0]->num() / num_active / Dtype(2); // Per image, per pixel loss
 
     // Write the loss to the output blob
     top[0]->mutable_cpu_data()[0] = loss;
@@ -79,8 +79,10 @@ void AccumulatorLossLayer<Dtype>::_buildAccumulator (const Blob<Dtype> *labels)
     // This is because of the cv::Mat type - I don't want to program other types now except CV_32FC1
     CHECK((std::is_same<Dtype,float>::value)) << "AccumulatorLossLayer supports only float!";
 
-    const int radius = 1;
-    const double scale = 0.25;
+    // Radius of the circle drawn in the center of the bounding box
+    const int radius = this->layer_param_.accumulator_loss_param().radius();
+    // Scale of the accumulator with respect to the original image - to adjust the circle centers
+    const double scale = 1.0 / this->layer_param_.accumulator_loss_param().downsampling();;
 
     const int height = this->_accumulator.shape(2);
     const int width  = this->_accumulator.shape(3);
@@ -108,7 +110,7 @@ void AccumulatorLossLayer<Dtype>::_buildAccumulator (const Blob<Dtype> *labels)
 
 
 template <typename Dtype>
-void AccumulatorLossLayer<Dtype>::_applyMask ()
+Dtype AccumulatorLossLayer<Dtype>::_applyMask ()
 {
     // Apply mask - we only want to include the same number of negative pixels as positive ones because
     // otherwise the learning would be skewed towards learning mostly negative examples. Thus we create
@@ -135,6 +137,8 @@ void AccumulatorLossLayer<Dtype>::_applyMask ()
         data_diff++;
         data_accumulator++;
     }
+
+    return Dtype(2) * num_positive;
 }
 
 

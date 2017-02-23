@@ -60,8 +60,9 @@ protected:
 
     /**
      * @brief Applies a random mask to diffs to ensure the 1:1 ratio of positive and negative samples
+     * @return Number of active samples
      */
-    void _applyMask ();
+    Dtype _applyMask();
 
 
     // ---------------------------------------  PROTECTED MEMBERS  --------------------------------------- //
