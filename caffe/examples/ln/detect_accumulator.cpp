@@ -45,6 +45,22 @@ void wrapInputLayer (caffe::Blob<float>* input_layer, std::vector<cv::Mat> &out_
 }
 
 
+void saveImageAndAccumulator (const cv::Mat &image, const cv::Mat &acc_large, int i)
+{
+    cv::Mat canvas(image.rows, 2*image.cols, CV_8UC3);
+
+    image.copyTo(canvas(cv::Rect(0, 0, image.cols, image.rows)));
+
+    cv::Mat acc_large_bgr = acc_large * 255.0f;
+    acc_large_bgr.convertTo(acc_large_bgr, CV_8UC1);
+    cv::cvtColor(acc_large_bgr, acc_large_bgr, CV_GRAY2BGR);
+
+    acc_large_bgr.copyTo(canvas(cv::Rect(image.cols, 0, image.cols, image.rows)));
+
+    cv::imwrite("acc" + std::to_string(i) + ".png", canvas);
+}
+
+
 void runAccumulatorDetection (const std::string &path_prototxt, const std::string &path_caffemodel,
                               const std::string &path_image_list)
 {
@@ -112,8 +128,8 @@ void runAccumulatorDetection (const std::string &path_prototxt, const std::strin
 
         cv::imshow("Image", image);
         cv::imshow("Accumulator", acc_large);
+//        saveImageAndAccumulator(image, acc_large, i++);
         cv::waitKey(0);
-
     }
 }
 
