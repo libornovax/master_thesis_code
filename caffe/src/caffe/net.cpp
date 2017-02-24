@@ -137,7 +137,8 @@ void Net<Dtype>::Init(const NetParameter& in_param) {
       memory_used_ += top_vecs_[layer_id][top_id]->count();
     }
     LOG_IF(INFO, Caffe::root_solver())
-        << "Memory required for data: " << memory_used_ * sizeof(Dtype);
+        << "Memory required for data: " << memory_used_ * sizeof(Dtype)
+        << " = " << (memory_used_*sizeof(Dtype)/1024/1024) << " MB";
     const int param_size = layer_param.param_size();
     const int num_param_blobs = layers_[layer_id]->blobs().size();
     CHECK_LE(param_size, num_param_blobs)
