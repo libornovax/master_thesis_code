@@ -31,6 +31,8 @@ namespace po = boost::program_options;
  */
 void wrapInputLayer (caffe::Blob<float>* input_layer, std::vector<cv::Mat> &out_input_channels)
 {
+    out_input_channels.clear();
+
     int height = input_layer->shape(2);
     int width  = input_layer->shape(3);
 
@@ -82,14 +84,9 @@ void runAccumulatorDetection (const std::string &path_prototxt, const std::strin
     CHECK_EQ(input_layer->shape(1), 3) << "Input layer must have 3 channels.";
     CHECK_EQ(output_layer->shape(1), 1) << "Output layer must have one channel";
 
-
-//    input_layer->Reshape(1, num_channels_, input_geometry_.height, input_geometry_.width);
-//    net_->Reshape();
-
     // Prepare the input channels
     std::vector<cv::Mat> input_channels;
     wrapInputLayer(input_layer, input_channels);
-
 
     std::ifstream infile(path_image_list.c_str());
     CHECK(infile) << "Unable to open image list TXT file '" << path_image_list << "'!";
@@ -109,10 +106,11 @@ void runAccumulatorDetection (const std::string &path_prototxt, const std::strin
 
         if (imagef.rows != input_layer->shape(2) || imagef.cols != input_layer->shape(3))
         {
-            LOG(WARNING) << "Image must be resized to fit network input shape! " << imagef.size()
-                         << " -> " << input_layer->shape(3) << "x" << input_layer->shape(2);
+            // The image has different dimensions than the net currently has -> we need to reshape it
+            input_layer->Reshape(1, input_layer->shape(1), imagef.rows, imagef.cols);
+            net->Reshape();
 
-            cv::resize(imagef, imagef, cv::Size(input_layer->shape(3), input_layer->shape(2)));
+            wrapInputLayer(input_layer, input_channels);
         }
 
         // Copy the image to the input layer of the network
@@ -124,7 +122,7 @@ void runAccumulatorDetection (const std::string &path_prototxt, const std::strin
         cv::Mat accumulator(output_layer->shape(2), output_layer->shape(3), CV_32FC1,
                             output_layer->mutable_cpu_data());
 
-        cv::Mat acc_large; cv::resize(accumulator, acc_large, cv::Size(), 4, 4);
+        cv::Mat acc_large; cv::resize(accumulator, acc_large, image.size());
 
         cv::imshow("Image", image);
         cv::imshow("Accumulator", acc_large);
