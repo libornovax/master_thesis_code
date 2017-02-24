@@ -62,7 +62,11 @@ Makefile.config
 # 1. reference, and not casually committed
 # 2. custom, and live on their own unless they're deliberated contributed
 data/*
-models/*
+models/bvlc_alexnet/*
+models/bvlc_googlenet/*
+models/bvlc_reference_caffenet/*
+models/bvlc_reference_rcnn_ilsvrc13/*
+models/finetune_flickr_style/*
 *.caffemodel
 *.caffemodel.h5
 *.solverstate

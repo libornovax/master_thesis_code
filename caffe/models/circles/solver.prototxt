@@ -1,0 +1,19 @@
+net: "/Users/libornovak/Software/master_thesis/caffe/models/circles/train_val.prototxt"
+
+type: "SGD"
+
+test_iter: 10
+test_interval: 1000
+display: 10
+
+base_lr: 0.001
+lr_policy: "step"
+gamma: 0.1
+stepsize: 500
+max_iter: 1000
+momentum: 0.9
+weight_decay: 0.0005
+snapshot: 100
+snapshot_prefix: "/Users/libornovak/Software/master_thesis/caffe/models/circles/circles"
+
+solver_mode: CPU
