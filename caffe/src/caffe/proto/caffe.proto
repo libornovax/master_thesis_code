@@ -417,8 +417,12 @@ message AccumulatorLossParameter {
   // Radius of the circle, which is created in the center of each bounding
   // box in the target accumulator
   optional int32 radius = 1 [default = 1];
-  // How many times is the accumulator downsampled with respect to the input
-  // image
+  // How many times is the accumulator downsampled with respect to
+  // the input image
+  // NOTE: In the case of MultiscaleAccumulatorLoss layer, the downsampling
+  // says how many times is the largest accumulator downsampled with respect
+  // to the input image (the following accumulators are always taken as being
+  // 2x smaller than the previous one)
   optional int32 downsampling = 2 [default = 4];
   // The ratio of negative:positive (negative_ratio:1) samples (pixels) in
   // the accumulator, which are included in the computation of the loss
