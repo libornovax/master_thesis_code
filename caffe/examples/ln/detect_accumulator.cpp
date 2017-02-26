@@ -77,12 +77,14 @@ void runAccumulatorDetection (const std::string &path_prototxt, const std::strin
     net->CopyTrainedLayersFrom(path_caffemodel);
 
     caffe::Blob<float>* input_layer  = net->input_blobs()[0];
-    caffe::Blob<float>* output_layer = net->output_blobs()[0];
+    LOG(INFO) << "We have " << net->output_blobs().size() << " accumulators on the output";
 
     CHECK_EQ(net->num_inputs(), 1) << "Network should have exactly one input.";
-    CHECK_EQ(net->num_outputs(), 1) << "Network should have exactly one output.";
     CHECK_EQ(input_layer->shape(1), 3) << "Input layer must have 3 channels.";
-    CHECK_EQ(output_layer->shape(1), 1) << "Output layer must have one channel";
+    for (const auto output_layer: net->output_blobs())
+    {
+        CHECK_EQ(output_layer->shape(1), 1) << "Output layer must have one channel";
+    }
 
     // Prepare the input channels
     std::vector<cv::Mat> input_channels;
@@ -118,15 +120,21 @@ void runAccumulatorDetection (const std::string &path_prototxt, const std::strin
 
         net->Forward();
 
-        // Show the accumulator on the output
-        cv::Mat accumulator(output_layer->shape(2), output_layer->shape(3), CV_32FC1,
-                            output_layer->mutable_cpu_data());
+        // Show the accumulators on the output
+        for (int a = 0; a < net->output_blobs().size(); ++a)
+        {
+            caffe::Blob<float>* output_layer = net->output_blobs()[a];
+            cv::Mat accumulator(output_layer->shape(2), output_layer->shape(3), CV_32FC1,
+                                output_layer->mutable_cpu_data());
 
-        cv::Mat acc_large; cv::resize(accumulator, acc_large, image.size());
+            cv::Mat acc_large; cv::resize(accumulator, acc_large, image.size(), 0, 0, cv::INTER_NEAREST);
+
+
+            cv::imshow("Accumulator " + net->blob_names()[net->output_blob_indices()[a]], acc_large);
+//            saveImageAndAccumulator(image, acc_large, i++);
+        }
 
         cv::imshow("Image", image);
-        cv::imshow("Accumulator", acc_large);
-//        saveImageAndAccumulator(image, acc_large, i++);
         cv::waitKey(0);
     }
 }
