@@ -70,7 +70,14 @@ protected:
      * @param i Index of the accumulator and diff to which apply the mask
      * @return Number of active samples
      */
-    Dtype _applyMask(int i);
+    Dtype _applyMask (int i);
+
+    /**
+     * @brief Weights the positive samples to increase their impact in the cost function and learning
+     * @param i Index of the accumulator and diff, which will be weighted
+     * @return Number of active samples (size of the accumulator)
+     */
+    Dtype _applyDiffWeights (int i);
 
 
     // ---------------------------------------  PROTECTED MEMBERS  --------------------------------------- //

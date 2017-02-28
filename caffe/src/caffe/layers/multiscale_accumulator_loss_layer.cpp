@@ -65,7 +65,8 @@ void MultiscaleAccumulatorLossLayer<Dtype>::Forward_cpu (const vector<Blob<Dtype
 
         // Apply mask on this diff - we only want to include some number of negative pixels because otherwise
         // the learning would be skewed towards learning mostly negative examples
-        Dtype num_active = this->_applyMask(i);
+//        Dtype num_active = this->_applyMask(i);
+        Dtype num_active = this->_applyDiffWeights(i);
 
         Dtype dot = caffe_cpu_dot(count, this->_diffs[i]->cpu_data(), this->_diffs[i]->cpu_data());
         loss += dot / output->shape(0) / num_active / Dtype(2); // Per image, per pixel loss
@@ -180,6 +181,47 @@ Dtype MultiscaleAccumulatorLossLayer<Dtype>::_applyMask (int i)
     }
 
     // The number of active samples (pixels) is the sum of positive and negative ones
+    return Dtype(num_positive + num_negative);
+}
+
+
+template <typename Dtype>
+Dtype MultiscaleAccumulatorLossLayer<Dtype>::_applyDiffWeights (int i)
+{
+    // Applies weights on the diffs of the positive samples in order to increase their significance in
+    // the loss function. The diffs of the positive samples will get multiplied by a multiplier given by
+    // the set negative:positive ratio
+
+    const std::shared_ptr<Blob<Dtype>> accumulator = this->_accumulators[i];
+
+    CHECK_EQ(accumulator->count(), this->_diffs[i]->count()) << "Accumulator and diff size is not the same!";
+
+    // The number of positive samples is the number of 1s in the accumulator
+    const int num_positive = caffe_cpu_asum(accumulator->count(), accumulator->cpu_data());
+    const int num_negative = accumulator->count() - num_positive;
+
+    Dtype pos_diff_weight = float(num_negative) / num_positive
+                            / this->layer_param_.accumulator_loss_param().negative_ratio();
+
+    LOG(INFO) << "Positive diff weight: " << pos_diff_weight;
+
+    Dtype* data_diff              = this->_diffs[i]->mutable_cpu_data();
+    const Dtype* data_accumulator = accumulator->cpu_data();
+
+    for (int i = 0; i < accumulator->count(); ++i)
+    {
+        // If this is a positive sample -> multiply its diff
+        if (*data_accumulator > Dtype(0.0f))
+        {
+            *data_diff *= pos_diff_weight;
+        }
+
+        data_diff++;
+        data_accumulator++;
+    }
+
+    // The number of active samples (pixels) is the sum of positive and negative ones, which in this case is
+    // accumulator->count(), i.e. number of pixels in the accumulator
     return Dtype(num_positive + num_negative);
 }
 
