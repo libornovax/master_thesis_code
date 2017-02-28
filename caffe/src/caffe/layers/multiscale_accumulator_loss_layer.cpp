@@ -66,6 +66,8 @@ void MultiscaleAccumulatorLossLayer<Dtype>::Forward_cpu (const vector<Blob<Dtype
         // Apply mask on this diff - we only want to include some number of negative pixels because otherwise
         // the learning would be skewed towards learning mostly negative examples
 //        Dtype num_active = this->_applyMask(i);
+        // Apply weight on the positive samples (pixels) to compensate for the smaller amount of positive
+        // pixels in the target accumulator
         Dtype num_active = this->_applyDiffWeights(i);
 
         Dtype dot = caffe_cpu_dot(count, this->_diffs[i]->cpu_data(), this->_diffs[i]->cpu_data());
@@ -202,8 +204,6 @@ Dtype MultiscaleAccumulatorLossLayer<Dtype>::_applyDiffWeights (int i)
 
     Dtype pos_diff_weight = float(num_negative) / num_positive
                             / this->layer_param_.accumulator_loss_param().negative_ratio();
-
-    LOG(INFO) << "Positive diff weight: " << pos_diff_weight;
 
     Dtype* data_diff              = this->_diffs[i]->mutable_cpu_data();
     const Dtype* data_accumulator = accumulator->cpu_data();
