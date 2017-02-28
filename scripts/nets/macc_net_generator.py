@@ -98,10 +98,11 @@ class MACCNetGenerator(object):
 			
 			for line in infile:
 				lines.append(line.rstrip('\n'))
-				print(line)
+				print(line.rstrip('\n'))
 
 
 		# Create the train_val.prototxt file
+		print('\n-- TRAIN_VAL')
 		with open(os.path.join(path_out, self.name + '_train_val.prototxt'), 'w') as outfile:
 			self.reset()
 
@@ -119,6 +120,7 @@ class MACCNetGenerator(object):
 
 
 		# Create the deploy.prototxt file
+		print('\n-- DEPLOY')
 		with open(os.path.join(path_out, self.name + '_deploy.prototxt'), 'w') as outfile:
 			self.reset()
 
@@ -210,6 +212,7 @@ class MACCNetGenerator(object):
 		fov = self.fov_base * self.downsampling + self.fov_prev_downsampling-ceil(self.downsampling/2.0)
 		self.fov_previous = fov
 
+		print('-- ' + name +  ' \t FOV %d x %d'%(fov, fov))
 
 		out  = ('layer {\n' \
 				'  # ' + '-'*23 + '  FOV %d x %d  (%d+%d=%d)\n'%(fov, fov, self.fov_base * self.downsampling, self.fov_prev_downsampling-ceil(self.downsampling/2.0), fov) + \
@@ -269,6 +272,8 @@ class MACCNetGenerator(object):
 
 		name = 'pool_x%d'%(self.downsampling)
 
+		print('-- Pool')
+
 		out  = self._downsampling()
 		out += ('layer {\n' \
 				'  name: "' + name + '"\n' \
@@ -306,6 +311,8 @@ class MACCNetGenerator(object):
 
 		name = 'acc_x%d'%(scale)
 		bb_max = (2*self.radius+1) * scale * 1/CIRCLE_SIZE
+
+		print('-- ' + name + ' \t SCALE 1/%d  (FOV %d x %d, BB %dx%d px)'%(scale, self.last_in_scale_fov[scale], self.last_in_scale_fov[scale], bb_max, bb_max))
 
 		out  = ('layer {\n' \
 				'  # -----------------------  ACCUMULATOR\n' \
