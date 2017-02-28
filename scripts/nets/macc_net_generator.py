@@ -78,7 +78,7 @@ class MACCNetGenerator(object):
 		self.fov_previous = 1
 		self.fov_prev_downsampling = 1
 		self.accs = []
-		self.min_acc_downsampling = 1
+		self.min_acc_downsampling = 99999999
 
 
 	def generate_prototxt_files(self, path_out):
