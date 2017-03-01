@@ -74,7 +74,20 @@ def check_label_difficulty(data, difficulty):
 	return True
 
 
-def translate_file(path_labels, path_images, difficulty, outfile):
+def compute_hw_ratio(data):
+	"""
+	Compute the ratio of the bounding box dimensions h/w.
+
+	Input:
+		data: One split line of the label file (line.split(' '))
+	"""
+	w = float(data[6]) - float(data[4])
+	h = float(data[7]) - float(data[5])
+
+	return h/w
+
+
+def translate_file(path_labels, path_images, difficulty, outfile, filter):
 	"""
 	Runs the translation of the KITTI label format into the BBTXT format.
 
@@ -83,6 +96,7 @@ def translate_file(path_labels, path_images, difficulty, outfile):
 		path_images: Path to the "image_2" folder with images from the KITTI dataset
 		difficulty:  Difficulty of the dataset by KITTI standards (ignores truncation percentage!)
 		outfile:     File handle of the open output BBTXT file
+		filter:      Ratio of h/w above which will bounding boxes be filtered
 	"""
 	print('-- TRANSLATING KITTI TO BBTXT')
 
@@ -107,6 +121,10 @@ def translate_file(path_labels, path_images, difficulty, outfile):
 
 				# Check the difficulty of this bounding box
 				if not check_label_difficulty(data, difficulty): continue
+
+				# Check the bounding box h/w ratio - this is because there are some incorrect labels
+				# in the dataset, which just mark one or two columns or so
+				if compute_hw_ratio(data) > filter: continue
 
 				path_image = os.path.join(path_images, os.path.splitext(f)[0]) + '.png'
 				if not os.path.isfile(path_image):
@@ -141,6 +159,10 @@ def parse_arguments():
 						help='Difficulty by KITTI standards, one of [easy, moderate, hard, all]')
 	parser.add_argument('outfile', metavar='path_outfile', type=argparse.FileType('w'),
 						help='Path to the output BBTXT file (including the extension)')
+	parser.add_argument('--filter', metavar='filter', type=float, default=99999.9,
+						help='Ratio h/w. If provided, the bounding boxes with their h/w above the '\
+							 'provided ratio will be filtered out. This is to filter incorrectly ' \
+							 'labeled objects')
 
 	args = parser.parse_args()
 
@@ -162,7 +184,7 @@ def parse_arguments():
 
 def main():
 	args = parse_arguments()
-	translate_file(args.path_labels, args.path_images, args.difficulty, args.outfile)
+	translate_file(args.path_labels, args.path_images, args.difficulty, args.outfile, args.filter)
 	args.outfile.close()
 
 

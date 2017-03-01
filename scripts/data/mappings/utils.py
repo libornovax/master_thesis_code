@@ -1,11 +1,11 @@
 """
-Functions for loading the data mappings from numbers to labels.
+Functions for loading the data mappings from numbers labels to categories.
 
 INFORMATION ABOUT THE MAPPINGS
 ------------------------------
-The shared values in the mappings are the text labels. In each dataset we have a different set
+The shared values in the mappings are the text categories. In each dataset we have a different set
 of numbers (labels of the classes in the dataset), but we need to map them to a common
-representation - in this case the text labels.
+representation - in this case the text categories.
 """
 
 __date__   = '12/01/2016'
@@ -25,7 +25,7 @@ def load_mapping(path_mapping):
 	Loads a mapping from a YAML file.
 
 	Input:
-		path_mapping: Path to a YAML file with label mapping
+		path_mapping: Path to a YAML file with label:category mapping
 	Returns:
 		dictionary with 'name' and 'mappings'
 	"""
@@ -52,18 +52,17 @@ def load_mapping(path_mapping):
 	return None
 
 
-def invert_mapping(mapping):
+def available_categories(mapping):
 	"""
-	Inverts the given mapping of "key: value" to "value: key" dictionary.
+	Returns a list of available categories in the given mapping.
 
 	Input:
-		mapping: Dictionary to be inverted
+		mapping: Dictionary of mappings label:category
 	Returns:
-		dictionary with 'name' and 'mappings'
+		list of string categories, which are present in this mapping
 	"""
-	inverse_mapping = mapping.copy()
-	inverse_mapping['mappings'] = {val: key for key, val in mapping['mappings'].iteritems()}
-	return inverse_mapping
+	return list(set(mapping.values()))
+
 
 
 ####################################################################################################
