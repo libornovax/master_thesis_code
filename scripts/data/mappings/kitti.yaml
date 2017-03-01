@@ -1,0 +1,17 @@
+#
+# 12/01/2016
+# Libor Novak
+#
+# Mapping of KITTI numbers (the numbers are created during translation to BBTXT in kitti2bbtxt.py)
+# to labels
+#
+
+name: kitti
+mappings:
+    1: car      # Car
+    2: car      # Van
+    3: car      # Truck
+    4: person   # Pedestrian
+    5: person   # Person_sitting
+    6: cyclist  # Cyclist
+    7: tram     # Tram
