@@ -14,6 +14,10 @@
 
 #include "caffe/layers/loss_layer.hpp"
 
+// Instead of random selection of samples the positive samples are weighted to even their amount in
+// the ground truth accumulator
+#define USE_DIFF_WEIGHT
+
 
 namespace caffe {
 
@@ -60,24 +64,36 @@ protected:
 //                               const vector<Blob<Dtype>*> &bottom) override;
 
     /**
+     * @brief Computes the bounds of bounding box sizes for the given accumulator
+     * @param i Index of the accumulator
+     * @param num_accumulators Total number of accumulators in the layer
+     * @param scale Scaling factor of the given accumulator
+     * @return Output variable that will be filled with the bounds
+     */
+    std::pair<float, float> _computeSizeBounds (const int i, const int num_accumulators,
+                                                const int scale) const;
+
+    /**
      * @brief Builds the accumulators from the given labels
      * @param labels Blob with the labels of shape batch x num_bbs x 5
      */
     void _buildAccumulators (const Blob<Dtype> *labels);
 
+#ifndef USE_DIFF_WEIGHT
     /**
      * @brief Applies a random mask to a diff to ensure the required ratio of positive and negative samples
      * @param i Index of the accumulator and diff to which apply the mask
      * @return Number of active samples
      */
     Dtype _applyMask (int i);
-
+#else
     /**
      * @brief Weights the positive samples to increase their impact in the cost function and learning
      * @param i Index of the accumulator and diff, which will be weighted
      * @return Number of active samples (size of the accumulator)
      */
     Dtype _applyDiffWeights (int i);
+#endif
 
 
     // ---------------------------------------  PROTECTED MEMBERS  --------------------------------------- //
@@ -85,6 +101,11 @@ protected:
     std::vector<std::shared_ptr<Blob<Dtype>>> _accumulators;
     // Diff of the accumulator and the net output - saved for backpropagation
     std::vector<std::shared_ptr<Blob<Dtype>>> _diffs;
+    // Scales (downsamplings) of the accumulators
+    std::vector<int> _scales;
+    // Each accumulator only includes some bounding boxes - given the size of the boundig box. The _bb_bounds
+    // contain bounds on the bounding box sizes, which are going to be included in the respective accumulator
+    std::vector<std::pair<float,float>> _bb_bounds;
     // Random number generator
     shared_ptr<Caffe::RNG> _rng;
 

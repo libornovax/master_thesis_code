@@ -16,6 +16,10 @@ MultiscaleAccumulatorLossLayer<Dtype>::MultiscaleAccumulatorLossLayer(const Laye
     : LossLayer<Dtype>(param),
       _rng(new Caffe::RNG(caffe_rng_rand()))
 {
+    CHECK(param.has_accumulator_loss_param()) << "AccumulatorLossParameter is mandatory!";
+    CHECK(param.accumulator_loss_param().has_radius()) << "Radius is mandatory!";
+    CHECK(param.accumulator_loss_param().has_circle_ratio()) << "Circle ratio is mandatory!";
+    CHECK(param.accumulator_loss_param().has_downsampling()) << "Downsampling is mandatory!";
 }
 
 
@@ -27,18 +31,38 @@ void MultiscaleAccumulatorLossLayer<Dtype>::Reshape (const vector<Blob<Dtype>*> 
 
     LossLayer<Dtype>::Reshape(bottom, top);
 
-    int num_accumulators = bottom.size() - 1;
+    const int num_accumulators = bottom.size() - 1;
+    int scale = this->layer_param_.accumulator_loss_param().downsampling();
+
     if (num_accumulators != this->_accumulators.size() || num_accumulators != this->_diffs.size())
     {
         // This should only happen once during initialization -> create blobs for accumulators
         this->_accumulators.clear();
         this->_diffs.clear();
+        this->_scales.clear();
+        this->_bb_bounds.clear();
 
         for (int i = 0; i < num_accumulators; ++i)
         {
-            std::cout << "[" << i << "] " << bottom[i+1]->shape(0) << " x " << bottom[i+1]->shape(1) << " x " << bottom[i+1]->shape(2) << " x " << bottom[i+1]->shape(3) << std::endl;
             this->_accumulators.push_back(std::make_shared<Blob<Dtype>>(bottom[i+1]->shape()));
             this->_diffs.push_back(std::make_shared<Blob<Dtype>>(bottom[i+1]->shape()));
+
+            // Compute the scales of the accumulators
+            this->_scales.push_back(scale);
+
+            // Compute the bounds for bounding boxes, which should be included in this accumulator
+            this->_bb_bounds.push_back(this->_computeSizeBounds(i, num_accumulators, scale));
+
+            scale *= 2;
+        }
+    }
+    else
+    {
+        // Only reshape the blobs - batch size could have changed
+        for (int i = 0; i < num_accumulators; ++i)
+        {
+            this->_accumulators[i]->ReshapeLike(*bottom[i+1]);
+            this->_diffs[i]->ReshapeLike(*bottom[i+1]);
         }
     }
 }
@@ -63,12 +87,15 @@ void MultiscaleAccumulatorLossLayer<Dtype>::Forward_cpu (const vector<Blob<Dtype
         caffe_sub(count, output->cpu_data(), this->_accumulators[i]->cpu_data(),
                   this->_diffs[i]->mutable_cpu_data());
 
-        // Apply mask on this diff - we only want to include some number of negative pixels because otherwise
-        // the learning would be skewed towards learning mostly negative examples
-//        Dtype num_active = this->_applyMask(i);
+#ifdef USE_DIFF_WEIGHT
         // Apply weight on the positive samples (pixels) to compensate for the smaller amount of positive
         // pixels in the target accumulator
         Dtype num_active = this->_applyDiffWeights(i);
+#else
+        // Apply mask on this diff - we only want to include some number of negative pixels because otherwise
+        // the learning would be skewed towards learning mostly negative examples
+        Dtype num_active = this->_applyMask(i);
+#endif
 
         Dtype dot = caffe_cpu_dot(count, this->_diffs[i]->cpu_data(), this->_diffs[i]->cpu_data());
         loss += dot / output->shape(0) / num_active / Dtype(2); // Per image, per pixel loss
@@ -102,6 +129,46 @@ void MultiscaleAccumulatorLossLayer<Dtype>::Backward_cpu (const vector<Blob<Dtyp
 // -----------------------------------------  PROTECTED METHODS  ----------------------------------------- //
 
 template <typename Dtype>
+std::pair<float, float>
+MultiscaleAccumulatorLossLayer<Dtype>::_computeSizeBounds (const int i, const int num_accumulators,
+                                                           const int scale) const
+{
+    // The bounding boxes that should be detected by a given accumulator are determined by their size. Each
+    // accumulator detects bounding boxes with size in some interval <min bound, max bound>. Here we compute
+    // these bounds. These bounds are also not sharp, but they overlap so some objects will be detected by
+    // multiple accumulators
+
+    const int radius = this->layer_param_.accumulator_loss_param().radius();
+    const float cr   = this->layer_param_.accumulator_loss_param().circle_ratio();
+    const float bo   = this->layer_param_.accumulator_loss_param().bounds_overlap();
+
+    auto bounds = std::make_pair(0.0f, 99999.9f);
+
+    // The "ideal" size of a bounding box that should be detected by this accumulator
+    const float ideal_size = float(2*radius+1) / cr * scale;
+
+    if (i < num_accumulators-1 && num_accumulators != 1)
+    {
+        // Everything but the last accumulator will have a bound above
+        const float ext_above  = ((1-bo)*ideal_size)/2 + bo*ideal_size;
+        bounds.second = ideal_size + ext_above;
+    }
+    if (i > 0 && num_accumulators != 1)
+    {
+        // Everything but the first accumulator will have a bound below
+        const float difference = ideal_size / 2.0f;
+        const float ext_below  = ((1-bo)*difference)/2 + bo*difference;
+        bounds.first = ideal_size - ext_below;
+    }
+
+    LOG(INFO) << "[" << i << "] Scale: x" << scale << ", bbs: " << bounds.first << " to "
+              << bounds.second << " px, ideal: " << ideal_size << " px";
+
+    return bounds;
+}
+
+
+template <typename Dtype>
 void MultiscaleAccumulatorLossLayer<Dtype>::_buildAccumulators (const Blob<Dtype> *labels)
 {
     // This is because of the cv::Mat type - I don't want to program other types now except CV_32FC1
@@ -109,8 +176,6 @@ void MultiscaleAccumulatorLossLayer<Dtype>::_buildAccumulators (const Blob<Dtype
 
     // Radius of the circle drawn in the center of the bounding box
     const int radius = this->layer_param_.accumulator_loss_param().radius();
-    // Scale of the largest accumulator with respect to the original image - to recompute the bb coordinates
-    double scale = 1.0 / this->layer_param_.accumulator_loss_param().downsampling();
 
     // Fill accumulators of all scales
     for (int i = 0; i < this->_accumulators.size(); ++i)
@@ -121,6 +186,8 @@ void MultiscaleAccumulatorLossLayer<Dtype>::_buildAccumulators (const Blob<Dtype
         const int width  = accumulator->shape(3);
 
         Dtype *accumulator_data = accumulator->mutable_cpu_data();
+
+        const double scaling_ratio = 1.0 / this->_scales[i];
 
         // Go through all images on the output and for each of them create accumulators
         for (int b = 0; b < labels->shape(0); ++b)
@@ -133,20 +200,27 @@ void MultiscaleAccumulatorLossLayer<Dtype>::_buildAccumulators (const Blob<Dtype
             // Draw circles in the center of the bounding boxes
             for (int i = 0; i < labels->shape(1); ++i)
             {
+                // Data are stored like this [label, xmin, ymin, xmax, ymax]
                 const Dtype *data = labels->cpu_data() + labels->offset(b, i);
+
+                // If everything is 0, there are no more bounding boxes
                 if (data[0] == 0 && data[1] == 0 && data[2] == 0 && data[3] == 0 && data[4] == 0) break;
 
-                cv::circle(acc, cv::Point(scale*(data[1]+data[3])/2, scale*(data[2]+data[4])/2), radius,
-                           cv::Scalar(1), -1);
+                // Check if the size of the bounding box fits within the bounds of this accumulator - the
+                // largest dimension of the bounding box has to by within the bounds
+                Dtype largest_dim = std::max(data[3]-data[1], data[4]-data[2]);
+                if (largest_dim > this->_bb_bounds[b].first && largest_dim < this->_bb_bounds[b].second)
+                {
+                    cv::circle(acc, cv::Point(scaling_ratio*(data[1]+data[3])/2,
+                                              scaling_ratio*(data[2]+data[4])/2), radius, cv::Scalar(1), -1);
+                }
             }
         }
-
-        // Next accumulator is half the scale of this one
-        scale /= 2;
     }
 }
 
 
+#ifndef USE_DIFF_WEIGHT
 template <typename Dtype>
 Dtype MultiscaleAccumulatorLossLayer<Dtype>::_applyMask (int i)
 {
@@ -185,8 +259,7 @@ Dtype MultiscaleAccumulatorLossLayer<Dtype>::_applyMask (int i)
     // The number of active samples (pixels) is the sum of positive and negative ones
     return Dtype(num_positive + num_negative);
 }
-
-
+#else
 template <typename Dtype>
 Dtype MultiscaleAccumulatorLossLayer<Dtype>::_applyDiffWeights (int i)
 {
@@ -224,6 +297,7 @@ Dtype MultiscaleAccumulatorLossLayer<Dtype>::_applyDiffWeights (int i)
     // accumulator->count(), i.e. number of pixels in the accumulator
     return Dtype(num_positive + num_negative);
 }
+#endif
 
 
 // ----------------------------------------  LAYER INSTANTIATION  ---------------------------------------- //
