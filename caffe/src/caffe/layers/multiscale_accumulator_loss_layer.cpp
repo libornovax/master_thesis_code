@@ -181,16 +181,16 @@ void MultiscaleAccumulatorLossLayer<Dtype>::_buildAccumulators (const Blob<Dtype
     const int radius = this->layer_param_.accumulator_loss_param().radius();
 
     // Fill accumulators of all scales
-    for (int i = 0; i < this->_accumulators.size(); ++i)
+    for (int a = 0; a < this->_accumulators.size(); ++a)
     {
-        std::shared_ptr<Blob<Dtype>> accumulator = this->_accumulators[i];
+        std::shared_ptr<Blob<Dtype>> accumulator = this->_accumulators[a];
 
         const int height = accumulator->shape(2);
         const int width  = accumulator->shape(3);
 
         Dtype *accumulator_data = accumulator->mutable_cpu_data();
 
-        const double scaling_ratio = 1.0 / this->_scales[i];
+        const double scaling_ratio = 1.0 / this->_scales[a];
 
         // Go through all images on the output and for each of them create accumulators
         for (int b = 0; b < labels->shape(0); ++b)
@@ -212,7 +212,7 @@ void MultiscaleAccumulatorLossLayer<Dtype>::_buildAccumulators (const Blob<Dtype
                 // Check if the size of the bounding box fits within the bounds of this accumulator - the
                 // largest dimension of the bounding box has to by within the bounds
                 Dtype largest_dim = std::max(data[3]-data[1], data[4]-data[2]);
-                if (largest_dim > this->_bb_bounds[i].first && largest_dim < this->_bb_bounds[i].second)
+                if (largest_dim > this->_bb_bounds[a].first && largest_dim < this->_bb_bounds[a].second)
                 {
                     cv::circle(acc, cv::Point(scaling_ratio*(data[1]+data[3])/2,
                                               scaling_ratio*(data[2]+data[4])/2), radius, cv::Scalar(1), -1);
@@ -230,8 +230,8 @@ float MultiscaleAccumulatorLossLayer<Dtype>::_computePosDiffWeight () const
     // the number of positive samples in the batch and then use it to compute the weight of each positive
     // sample
 
-    int num_positive = 0;
-    int num_total    = 0;
+    long num_positive = 0;
+    long num_total    = 0;
 
     for (int i = 0; i < this->_accumulators.size(); ++i)
     {
@@ -242,7 +242,7 @@ float MultiscaleAccumulatorLossLayer<Dtype>::_computePosDiffWeight () const
         num_total    += accumulator->count();
     }
 
-    const int num_negative = num_total - num_positive;
+    const long num_negative = num_total - num_positive;
 
     return float(num_negative) / num_positive / this->layer_param_.accumulator_loss_param().negative_ratio();
 }
