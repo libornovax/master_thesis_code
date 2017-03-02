@@ -2,7 +2,7 @@
 Creates PROTOTXT files for a multiscale accumulator network in Caffe. The input is a configuration
 file with the network description. This is a sample:
 my_beautiful_network
-r1
+r1 c0.3
 conv k3      o64
 conv k3  d2  o64
 pool
@@ -28,16 +28,31 @@ import os
 from math import ceil
 
 
-# The size of the circle in the accumulator with respect to max(w,h) of a bounding box
-# This is only used to compute the size of detected objects by each accumulator
-CIRCLE_SIZE = 0.3
-
-
 ####################################################################################################
 #                                            FUNCTIONS                                             # 
 ####################################################################################################
 
-def get_value(data, id):
+def get_value_float(data, id, required=False):
+	"""
+	Finds a value with the given id among data and returns its value. The data are strings with one
+	letters (id), followed by numbers. There are no spaces.
+
+	Input:
+		data: List of strings (something like ['o1.2', 'r45', 't0.9'])
+		id:   Id of the item to find - its string id
+	"""
+	for val in data:
+		if id in val:
+			return float(val[len(id):])
+
+	if required:
+		print('ERROR: "' + id + '" is required in ' + str(data) + '!')
+		exit()
+
+	return None
+
+
+def get_value_int(data, id, required=False):
 	"""
 	Finds a value with the given id among data and returns its value. The data are strings with one
 	letters (id), followed by numbers. There are no spaces.
@@ -46,11 +61,9 @@ def get_value(data, id):
 		data: List of strings (something like ['o12', 'r45', 't9'])
 		id:   Id of the item to find - its string id
 	"""
-	for val in data:
-		if id in val:
-			return int(val[len(id):])
+	val = get_value_float(data, id, required)
+	return int(val) if val is not None else None
 
-	return None
 
 
 ####################################################################################################
@@ -93,8 +106,13 @@ class MACCNetGenerator(object):
 		with open(self.path_config, 'r') as infile:
 			# First line contains the name of the network
 			self.name = infile.readline().rstrip('\n')
-			# Second line contains the radius of the circle in the accumulator
-			self.radius = get_value([infile.readline().rstrip('\n')], 'r')
+
+			# Second line contains the radius of the circle in the accumulator and the circle
+			# ratio - the size of the circle in the accumulator with respect to max(w,h) of
+			# a bounding box
+			data = infile.readline().rstrip('\n').split()
+			self.radius       = get_value_int(data, 'r', required=True)
+			self.circle_ratio = get_value_float(data, 'c', required=True)
 			
 			for line in infile:
 				lines.append(line.rstrip('\n'))
@@ -187,16 +205,10 @@ class MACCNetGenerator(object):
 
 		# Parse specs
 		data = specs[5:].split()
-		num_output  = get_value(data, 'o')
-		kernel_size = get_value(data, 'k')
-		dilation    = get_value(data, 'd')
+		num_output  = get_value_int(data, 'o', required=True)
+		kernel_size = get_value_int(data, 'k', required=True)
+		dilation    = get_value_int(data, 'd')
 
-		if num_output is None:
-			print('ERROR: Number of outputs is required in "' + specs + '"!')
-			exit()
-		if kernel_size is None:
-			print('ERROR: Kernel size is required in "' + specs + '"!')
-			exit()
 
 		# Compute the padding
 		pad = (kernel_size-1) / 2
@@ -300,24 +312,21 @@ class MACCNetGenerator(object):
 			specs: string (line from the config file) with the layer description
 		"""
 		data = specs[5:].split()
-		scale  = get_value(data, 'x')
+		scale  = get_value_int(data, 'x', required=True)
 
-		if scale is None:
-			print('ERROR: Scale is required in "' + specs + '"!')
-			exit()
 		if scale not in self.last_in_scale:
 			print('ERROR: Accumulator of this scale cannot be created "' + specs + '"!')
 			exit()
 
 		name = 'acc_x%d'%(scale)
-		bb_max = (2*self.radius+1) * scale * 1/CIRCLE_SIZE
+		bb_ideal = (2*self.radius+1) * scale * 1/self.circle_ratio
 
-		print('-- ' + name + ' \t SCALE 1/%d  (FOV %d x %d, BB %dx%d px)'%(scale, self.last_in_scale_fov[scale], self.last_in_scale_fov[scale], bb_max, bb_max))
+		print('-- ' + name + ' \t SCALE 1/%d  (FOV %d x %d, BB %dx%d px)'%(scale, self.last_in_scale_fov[scale], self.last_in_scale_fov[scale], bb_ideal, bb_ideal))
 
 		out  = ('layer {\n' \
 				'  # -----------------------  ACCUMULATOR\n' \
 				'  # -----------------------  SCALE 1/%d  (FOV %d x %d)\n'%(scale, self.last_in_scale_fov[scale], self.last_in_scale_fov[scale]) + \
-				'  # -----------------------  Train to detect bounding boxes up to %dx%d px\n'%(bb_max, bb_max) + \
+				'  # -----------------------  Ideal bounding box size: %dx%d px\n'%(bb_ideal, bb_ideal) + \
 				'  name: "' + name + '"\n' \
 				'  type: "Convolution"\n' \
 				'  bottom: "' + self.last_in_scale[scale] + '"\n' \
@@ -384,6 +393,8 @@ class MACCNetGenerator(object):
 				'    radius: %d\n'%(self.radius) + \
 				'    downsampling: %d\n'%(self.min_acc_downsampling) + \
 				'    negative_ratio: 4\n' \
+				'    circle_ratio: %f\n'%(self.circle_ratio) + \
+				'    bounds_overlap: 0.33\n' \
 				'  }\n' \
 				'}\n')
 

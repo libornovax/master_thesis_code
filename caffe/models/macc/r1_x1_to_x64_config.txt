@@ -1,5 +1,5 @@
 macc_0.3_r1_x1_to_x64
-r1
+r1 c0.3
 conv k3      o64
 conv k3  d2  o64
 conv k3  d6  o64

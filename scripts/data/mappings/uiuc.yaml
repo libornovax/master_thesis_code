@@ -1,0 +1,10 @@
+#
+# 03/02/2017
+# Libor Novak
+#
+# Mappings for the UIUC dataset. Contains only one label - cars.
+#
+
+name: uiuc
+mappings:
+    1: car  # There are only cars in this dataset
