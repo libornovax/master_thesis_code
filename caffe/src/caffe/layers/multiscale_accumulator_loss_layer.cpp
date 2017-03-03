@@ -88,8 +88,6 @@ void MultiscaleAccumulatorLossLayer<Dtype>::Forward_cpu (const vector<Blob<Dtype
         caffe_sub(count, output->cpu_data(), this->_accumulators[i]->cpu_data(),
                   this->_diffs[i]->mutable_cpu_data());
 
-        caffe_scal(count, Dtype(1.0f)/count, this->_diffs[i]->mutable_cpu_data());
-
 #ifdef USE_DIFF_WEIGHT
         // Apply weight on the negative samples (pixels) to compensate for the smaller amount of positive
         // pixels in the target accumulator
