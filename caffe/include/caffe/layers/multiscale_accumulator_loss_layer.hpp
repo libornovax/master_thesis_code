@@ -13,10 +13,7 @@
 #include "caffe/proto/caffe.pb.h"
 
 #include "caffe/layers/loss_layer.hpp"
-
-// Instead of random selection of samples the positive samples are weighted to even their amount in
-// the ground truth accumulator
-#define USE_DIFF_WEIGHT
+#include "caffe/layers/sigmoid_layer.hpp"
 
 
 namespace caffe {
@@ -35,6 +32,8 @@ class MultiscaleAccumulatorLossLayer : public LossLayer<Dtype>
 public:
 
     explicit MultiscaleAccumulatorLossLayer (const LayerParameter &param);
+
+    virtual void LayerSetUp (const vector<Blob<Dtype>*> &bottom, const vector<Blob<Dtype>*> &top) override;
 
     virtual void Reshape(const vector<Blob<Dtype>*> &bottom, const vector<Blob<Dtype>*> &top) override;
 
@@ -79,14 +78,6 @@ protected:
      */
     void _buildAccumulators (const Blob<Dtype> *labels);
 
-#ifndef USE_DIFF_WEIGHT
-    /**
-     * @brief Applies a random mask to a diff to ensure the required ratio of positive and negative samples
-     * @param i Index of the accumulator and diff to which apply the mask
-     * @return Number of active samples
-     */
-    Dtype _applyMask (int i);
-#else
     /**
      * @brief Weights the negative samples to increase their impact in the cost function and learning
      * @param i Index of the accumulator and diff, which will be weighted
@@ -94,7 +85,6 @@ protected:
      * @return Number of active samples (size of the accumulator)
      */
     Dtype _applyDiffWeights (int i, float neg_diff_weight);
-#endif
 
 
     // ---------------------------------------  PROTECTED MEMBERS  --------------------------------------- //
@@ -107,8 +97,15 @@ protected:
     // Each accumulator only includes some bounding boxes - given the size of the boundig box. The _bb_bounds
     // contain bounds on the bounding box sizes, which are going to be included in the respective accumulator
     std::vector<std::pair<float,float>> _bb_bounds;
-    // Random number generator
-    shared_ptr<Caffe::RNG> _rng;
+
+    /// The internal SigmoidLayer used to map predictions to probabilities.
+    std::vector<std::shared_ptr<SigmoidLayer<Dtype>>> _sigmoid_layers;
+    /// sigmoid_output stores the output of the SigmoidLayer.
+    std::vector<std::shared_ptr<Blob<Dtype>>> _sigmoid_outputs;
+    /// bottom vector holder to call the underlying SigmoidLayer::Forward
+    std::vector<std::vector<Blob<Dtype>*>> _sigmoid_bottom_vecs;
+    /// top vector holder to call the underlying SigmoidLayer::Forward
+    std::vector<std::vector<Blob<Dtype>*>> _sigmoid_top_vecs;
 
 };
 
