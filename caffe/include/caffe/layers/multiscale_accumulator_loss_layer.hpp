@@ -79,14 +79,6 @@ protected:
      */
     void _buildAccumulators (const Blob<Dtype> *labels);
 
-    /**
-     * @brief Computes the weight of positive samples in the current batch
-     * The weight which will be used to multiply the diffs of positive samples to assure the required ratio
-     * of negative:postive samples in the batch
-     * @return weight
-     */
-    float _computePosDiffWeight () const;
-
 #ifndef USE_DIFF_WEIGHT
     /**
      * @brief Applies a random mask to a diff to ensure the required ratio of positive and negative samples
@@ -96,12 +88,12 @@ protected:
     Dtype _applyMask (int i);
 #else
     /**
-     * @brief Weights the positive samples to increase their impact in the cost function and learning
+     * @brief Weights the negative samples to increase their impact in the cost function and learning
      * @param i Index of the accumulator and diff, which will be weighted
-     * @param pos_diff_weight Weight to be applied to positive samples
+     * @param neg_diff_weight Weight to be applied to negative samples
      * @return Number of active samples (size of the accumulator)
      */
-    Dtype _applyDiffWeights (int i, float pos_diff_weight);
+    Dtype _applyDiffWeights (int i, float neg_diff_weight);
 #endif
 
 

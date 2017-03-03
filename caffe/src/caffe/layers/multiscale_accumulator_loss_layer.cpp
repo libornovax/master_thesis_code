@@ -75,9 +75,7 @@ void MultiscaleAccumulatorLossLayer<Dtype>::Forward_cpu (const vector<Blob<Dtype
     // Create the accumulators from the labels
     this->_buildAccumulators(bottom[0]);
 
-    // Weight of positive samples in the current batch
-    float pos_diff_weight = this->_computePosDiffWeight();
-
+    const float nr = this->layer_param_.accumulator_loss_param().negative_ratio();
     Dtype loss = Dtype(0.0f);
 
     // Now it is a simple squared Euclidean distance of the net outputs and the accumulators
@@ -93,9 +91,10 @@ void MultiscaleAccumulatorLossLayer<Dtype>::Forward_cpu (const vector<Blob<Dtype
         caffe_scal(count, Dtype(1.0f)/count, this->_diffs[i]->mutable_cpu_data());
 
 #ifdef USE_DIFF_WEIGHT
-        // Apply weight on the positive samples (pixels) to compensate for the smaller amount of positive
+        // Apply weight on the negative samples (pixels) to compensate for the smaller amount of positive
         // pixels in the target accumulator
-        Dtype num_active = this->_applyDiffWeights(i, pos_diff_weight);
+        float neg_diff_weight = 1.0f / (float(count) / nr / output->shape(0));
+        Dtype num_active = this->_applyDiffWeights(i, neg_diff_weight);
 #else
         // Apply mask on this diff - we only want to include some number of negative pixels because otherwise
         // the learning would be skewed towards learning mostly negative examples
@@ -225,31 +224,6 @@ void MultiscaleAccumulatorLossLayer<Dtype>::_buildAccumulators (const Blob<Dtype
 }
 
 
-template <typename Dtype>
-float MultiscaleAccumulatorLossLayer<Dtype>::_computePosDiffWeight () const
-{
-    // We want to assure the negative:positive ratio of samples in the whole batch. Thus we have to compute
-    // the number of positive samples in the batch and then use it to compute the weight of each positive
-    // sample
-
-    long num_positive = 0;
-    long num_total    = 0;
-
-    for (int i = 0; i < this->_accumulators.size(); ++i)
-    {
-        const std::shared_ptr<Blob<Dtype>> accumulator = this->_accumulators[i];
-
-        // The number of positive samples is the number of 1s in the accumulator
-        num_positive += caffe_cpu_asum(accumulator->count(), accumulator->cpu_data());
-        num_total    += accumulator->count();
-    }
-
-    const long num_negative = num_total - num_positive;
-
-    return float(num_negative) / num_positive / this->layer_param_.accumulator_loss_param().negative_ratio();
-}
-
-
 #ifndef USE_DIFF_WEIGHT
 template <typename Dtype>
 Dtype MultiscaleAccumulatorLossLayer<Dtype>::_applyMask (int i)
@@ -291,11 +265,10 @@ Dtype MultiscaleAccumulatorLossLayer<Dtype>::_applyMask (int i)
 }
 #else
 template <typename Dtype>
-Dtype MultiscaleAccumulatorLossLayer<Dtype>::_applyDiffWeights (int i, float pos_diff_weight)
+Dtype MultiscaleAccumulatorLossLayer<Dtype>::_applyDiffWeights (int i, float neg_diff_weight)
 {
-    // Applies weights on the diffs of the positive samples in order to increase their significance in
-    // the loss function. The diffs of the positive samples will get multiplied by a multiplier given by
-    // the set negative:positive ratio
+    // Applies weights on the diffs of the negative samples in order to decrease their significance in
+    // the loss function
 
     const std::shared_ptr<Blob<Dtype>> accumulator = this->_accumulators[i];
 
@@ -306,10 +279,10 @@ Dtype MultiscaleAccumulatorLossLayer<Dtype>::_applyDiffWeights (int i, float pos
 
     for (int j = 0; j < accumulator->count(); ++j)
     {
-        // If this is a positive sample -> multiply its diff
-        if (*data_accumulator > Dtype(0.0f))
+        // If this is a negative sample -> multiply its diff
+        if (*data_accumulator == Dtype(0.0f))
         {
-            *data_diff *= pos_diff_weight;
+            *data_diff *= neg_diff_weight;
         }
 
         data_diff++;
