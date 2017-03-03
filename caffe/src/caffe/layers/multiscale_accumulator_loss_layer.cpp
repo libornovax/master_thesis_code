@@ -90,6 +90,8 @@ void MultiscaleAccumulatorLossLayer<Dtype>::Forward_cpu (const vector<Blob<Dtype
         caffe_sub(count, output->cpu_data(), this->_accumulators[i]->cpu_data(),
                   this->_diffs[i]->mutable_cpu_data());
 
+        caffe_scal(count, Dtype(1.0f)/count, this->_diffs[i]->mutable_cpu_data());
+
 #ifdef USE_DIFF_WEIGHT
         // Apply weight on the positive samples (pixels) to compensate for the smaller amount of positive
         // pixels in the target accumulator
@@ -271,7 +273,7 @@ Dtype MultiscaleAccumulatorLossLayer<Dtype>::_applyMask (int i)
     Dtype* data_diff              = this->_diffs[i]->mutable_cpu_data();
     const Dtype* data_accumulator = accumulator->cpu_data();
 
-    for (int i = 0; i < accumulator->count(); ++i)
+    for (int j = 0; j < accumulator->count(); ++j)
     {
         // If this is a negative sample -> randomly choose if we mask this diff out or not
         if (*data_accumulator == Dtype(0.0f) && dist(*rng) > num_negative)
@@ -302,7 +304,7 @@ Dtype MultiscaleAccumulatorLossLayer<Dtype>::_applyDiffWeights (int i, float pos
     Dtype* data_diff              = this->_diffs[i]->mutable_cpu_data();
     const Dtype* data_accumulator = accumulator->cpu_data();
 
-    for (int i = 0; i < accumulator->count(); ++i)
+    for (int j = 0; j < accumulator->count(); ++j)
     {
         // If this is a positive sample -> multiply its diff
         if (*data_accumulator > Dtype(0.0f))
