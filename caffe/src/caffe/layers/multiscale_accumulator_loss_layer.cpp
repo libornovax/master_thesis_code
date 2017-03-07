@@ -260,8 +260,9 @@ void MultiscaleAccumulatorLossLayer<Dtype>::_applyDiffWeights (int i, Blob<Dtype
     Dtype* data_diff              = bottom->mutable_cpu_data();
     const Dtype* data_accumulator = accumulator->cpu_data();
 
+    const float pn = caffe_cpu_asum(accumulator->count(), accumulator->cpu_data()) / bottom->shape(0);
     const float nr = this->layer_param().accumulator_loss_param().negative_ratio();
-    float neg_diff_weight = 1.0f / (accumulator->count() / nr / bottom->shape(0));
+    float neg_diff_weight = 1.0f / (accumulator->count() / nr / bottom->shape(0) / pn);
 
     for (int j = 0; j < accumulator->count(); ++j)
     {
