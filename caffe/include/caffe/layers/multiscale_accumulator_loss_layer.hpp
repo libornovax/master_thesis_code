@@ -79,12 +79,11 @@ protected:
     void _buildAccumulators (const Blob<Dtype> *labels);
 
     /**
-     * @brief Weights the negative samples to increase their impact in the cost function and learning
+     * @brief Weights the diffs in order to even out the impact of positive and negative samples on the gradient
      * @param i Index of the accumulator and diff, which will be weighted
-     * @param neg_diff_weight Weight to be applied to negative samples
-     * @return Number of active samples (size of the accumulator)
+     * @param bottom The bottom blob, whose diffs will be altered
      */
-    Dtype _applyDiffWeights (int i, float neg_diff_weight);
+    void _applyDiffWeights (int i, Blob<Dtype> *bottom);
 
 
     // ---------------------------------------  PROTECTED MEMBERS  --------------------------------------- //

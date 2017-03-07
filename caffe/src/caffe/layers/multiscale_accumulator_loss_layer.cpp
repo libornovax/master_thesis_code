@@ -94,8 +94,7 @@ void MultiscaleAccumulatorLossLayer<Dtype>::Forward_cpu (const vector<Blob<Dtype
     // Create the accumulators from the labels
     this->_buildAccumulators(bottom[0]);
 
-    Dtype loss        = Dtype(0.0f);
-    int count_total   = 0;
+    Dtype loss_total  = Dtype(0.0f);
     const int num_acc = bottom.size() - 1;
 
     // Now it is a simple squared Euclidean distance of the net outputs and the accumulators
@@ -107,6 +106,7 @@ void MultiscaleAccumulatorLossLayer<Dtype>::Forward_cpu (const vector<Blob<Dtype
         this->_sigmoid_layers[i]->Forward(this->_sigmoid_bottom_vecs[i], this->_sigmoid_top_vecs[i]);
 
         const int count = bottom[i+1]->count();
+        Dtype loss      = Dtype(0.0f);
 
         // Compute the loss (negative log likelihood)
         const Dtype* output = bottom[i+1]->cpu_data();
@@ -117,11 +117,11 @@ void MultiscaleAccumulatorLossLayer<Dtype>::Forward_cpu (const vector<Blob<Dtype
                     log(1 + exp(output[j] - 2 * output[j] * (output[j] >= 0)));
         }
 
-        count_total += count;
+        loss_total += loss / count;
     }
 
     // Write the loss to the output blob
-    top[0]->mutable_cpu_data()[0] = loss / count_total;
+    top[0]->mutable_cpu_data()[0] = loss_total / num_acc;
 }
 
 
@@ -136,15 +136,14 @@ void MultiscaleAccumulatorLossLayer<Dtype>::Backward_cpu (const vector<Blob<Dtyp
         // Fill in the diff for each output accumulator
         if (propagate_down[i+1])
         {
-//            // Apply weight on the negative samples (pixels) to compensate for the smaller amount of positive
-//            // pixels in the target accumulator
-//            float neg_diff_weight = 1.0f / (float(count) / nr / output->shape(0));
-//            Dtype num_active = this->_applyDiffWeights(i, neg_diff_weight);
-
             const int count = bottom[i+1]->count();
 
             caffe_sub(count, this->_sigmoid_outputs[i]->cpu_data(), this->_accumulators[i]->cpu_data(),
                       bottom[i+1]->mutable_cpu_diff());
+
+            // Apply weight on the diffs to compensate for the smaller amount of positive pixels in
+            // the target accumulator
+            this->_applyDiffWeights(i, bottom[i+1]);
 
             // Scale the gradient
             const Dtype loss_weight = top[0]->cpu_diff()[0] / count;
@@ -250,21 +249,22 @@ void MultiscaleAccumulatorLossLayer<Dtype>::_buildAccumulators (const Blob<Dtype
 
 
 template <typename Dtype>
-Dtype MultiscaleAccumulatorLossLayer<Dtype>::_applyDiffWeights (int i, float neg_diff_weight)
+void MultiscaleAccumulatorLossLayer<Dtype>::_applyDiffWeights (int i, Blob<Dtype> *bottom)
 {
-    // Applies weights on the diffs of the negative samples in order to decrease their significance in
-    // the loss function
+    // Applies weights on the diffs in order to even the impact of the positive and negative samples on
+    // the gradient
 
     const std::shared_ptr<Blob<Dtype>> accumulator = this->_accumulators[i];
+    CHECK_EQ(accumulator->count(), bottom->count()) << "Accumulator and diff size is not the same!";
 
-    CHECK_EQ(accumulator->count(), this->_diffs[i]->count()) << "Accumulator and diff size is not the same!";
-
-    Dtype* data_diff              = this->_diffs[i]->mutable_cpu_data();
+    Dtype* data_diff              = bottom->mutable_cpu_data();
     const Dtype* data_accumulator = accumulator->cpu_data();
+
+    const float nr = this->layer_param().accumulator_loss_param().negative_ratio();
+    float neg_diff_weight = 1.0f / (accumulator->count() / nr / bottom->shape(0));
 
     for (int j = 0; j < accumulator->count(); ++j)
     {
-        // If this is a negative sample -> multiply its diff
         if (*data_accumulator == Dtype(0.0f))
         {
             *data_diff *= neg_diff_weight;
@@ -273,10 +273,6 @@ Dtype MultiscaleAccumulatorLossLayer<Dtype>::_applyDiffWeights (int i, float neg
         data_diff++;
         data_accumulator++;
     }
-
-    // The number of active samples (pixels) is the sum of positive and negative ones, which in this case is
-    // accumulator->count(), i.e. number of pixels in the accumulator
-    return Dtype(accumulator->count());
 }
 
 
