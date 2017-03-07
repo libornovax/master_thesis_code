@@ -146,7 +146,9 @@ void MultiscaleAccumulatorLossLayer<Dtype>::Backward_cpu (const vector<Blob<Dtyp
             this->_applyDiffWeights(i, bottom[i+1]);
 
             // Scale the gradient
-            const Dtype loss_weight = top[0]->cpu_diff()[0] / count;
+            // CAREFUL HERE! We cannot scale it too much otherwise the net will basically have such small
+            // gradients that it won't learn anything!
+            const Dtype loss_weight = top[0]->cpu_diff()[0] / (count / bottom[i+1]->shape(0));
             caffe_scal(count, loss_weight, bottom[i+1]->mutable_cpu_diff());
         }
     }
@@ -262,13 +264,13 @@ void MultiscaleAccumulatorLossLayer<Dtype>::_applyDiffWeights (int i, Blob<Dtype
 
     const float pn = caffe_cpu_asum(accumulator->count(), accumulator->cpu_data()) / bottom->shape(0);
     const float nr = this->layer_param().accumulator_loss_param().negative_ratio();
-    float neg_diff_weight = 1.0f / (accumulator->count() / nr / bottom->shape(0) / pn);
+    float pos_diff_weight = accumulator->count() / nr / bottom->shape(0) / pn;
 
     for (int j = 0; j < accumulator->count(); ++j)
     {
-        if (*data_accumulator == Dtype(0.0f))
+        if (*data_accumulator > Dtype(0.0f))
         {
-            *data_diff *= neg_diff_weight;
+            *data_diff *= pos_diff_weight;
         }
 
         data_diff++;
