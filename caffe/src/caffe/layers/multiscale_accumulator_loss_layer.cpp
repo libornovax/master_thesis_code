@@ -12,9 +12,8 @@ namespace caffe {
 
 
 template <typename Dtype>
-MultiscaleAccumulatorLossLayer<Dtype>::MultiscaleAccumulatorLossLayer(const LayerParameter& param)
-    : LossLayer<Dtype>(param),
-      _rng(new Caffe::RNG(caffe_rng_rand()))
+MultiscaleAccumulatorLossLayer<Dtype>::MultiscaleAccumulatorLossLayer(const LayerParameter &param)
+    : LossLayer<Dtype>(param)
 {
     CHECK(param.has_accumulator_loss_param()) << "AccumulatorLossParameter is mandatory!";
     CHECK(param.accumulator_loss_param().has_radius()) << "Radius is mandatory!";
@@ -24,104 +23,131 @@ MultiscaleAccumulatorLossLayer<Dtype>::MultiscaleAccumulatorLossLayer(const Laye
 
 
 template <typename Dtype>
+void MultiscaleAccumulatorLossLayer<Dtype>::LayerSetUp (const vector<Blob<Dtype>*> &bottom,
+                                                        const vector<Blob<Dtype>*> &top)
+{
+    // IMPORTANT: The label blob is first and the accumulators follow
+
+    LossLayer<Dtype>::LayerSetUp(bottom, top);
+
+    const int num_accumulators = bottom.size() - 1;
+    int scale = this->layer_param_.accumulator_loss_param().downsampling();
+
+    this->_accumulators.clear();
+    this->_scales.clear();
+    this->_bb_bounds.clear();
+
+    this->_sigmoid_layers.clear();
+    this->_sigmoid_outputs.clear();
+    this->_sigmoid_bottom_vecs.clear();
+    this->_sigmoid_top_vecs.clear();
+
+    for (int i = 0; i < num_accumulators; ++i)
+    {
+        this->_accumulators.push_back(std::make_shared<Blob<Dtype>>());
+        // Compute the scales of the accumulators
+        this->_scales.push_back(scale);
+        // Compute the bounds for bounding boxes, which should be included in this accumulator
+        this->_bb_bounds.push_back(this->_computeSizeBounds(i, num_accumulators, scale));
+        scale *= 2;
+
+        // Initialize the sigmoid layers - see sigmoid_cross_entropy_loss_layer for details
+        this->_sigmoid_layers.emplace_back(new SigmoidLayer<Dtype>(this->layer_param()));
+        this->_sigmoid_outputs.emplace_back(new Blob<Dtype>());
+        this->_sigmoid_bottom_vecs.emplace_back(); // This creates an empty vector
+        this->_sigmoid_bottom_vecs[i].push_back(bottom[i+1]);
+        this->_sigmoid_top_vecs.emplace_back(); // This creates an empty vector
+        this->_sigmoid_top_vecs[i].push_back(this->_sigmoid_outputs[i].get());
+        this->_sigmoid_layers[i]->SetUp(this->_sigmoid_bottom_vecs[i], this->_sigmoid_top_vecs[i]);
+    }
+}
+
+
+template <typename Dtype>
 void MultiscaleAccumulatorLossLayer<Dtype>::Reshape (const vector<Blob<Dtype>*> &bottom,
-                                           const vector<Blob<Dtype>*> &top)
+                                                     const vector<Blob<Dtype>*> &top)
 {
     // IMPORTANT: The label blob is first and the accumulators follow
 
     LossLayer<Dtype>::Reshape(bottom, top);
 
     const int num_accumulators = bottom.size() - 1;
-    int scale = this->layer_param_.accumulator_loss_param().downsampling();
-
-    if (num_accumulators != this->_accumulators.size() || num_accumulators != this->_diffs.size())
+    for (int i = 0; i < num_accumulators; ++i)
     {
-        // This should only happen once during initialization -> create blobs for accumulators
-        this->_accumulators.clear();
-        this->_diffs.clear();
-        this->_scales.clear();
-        this->_bb_bounds.clear();
+        this->_accumulators[i]->ReshapeLike(*bottom[i+1]);
 
-        for (int i = 0; i < num_accumulators; ++i)
-        {
-            this->_accumulators.push_back(std::make_shared<Blob<Dtype>>(bottom[i+1]->shape()));
-            this->_diffs.push_back(std::make_shared<Blob<Dtype>>(bottom[i+1]->shape()));
+        this->_sigmoid_layers[i]->Reshape(this->_sigmoid_bottom_vecs[i], this->_sigmoid_top_vecs[i]);
 
-            // Compute the scales of the accumulators
-            this->_scales.push_back(scale);
-
-            // Compute the bounds for bounding boxes, which should be included in this accumulator
-            this->_bb_bounds.push_back(this->_computeSizeBounds(i, num_accumulators, scale));
-
-            scale *= 2;
-        }
-    }
-    else
-    {
-        // Only reshape the blobs - batch size could have changed
-        for (int i = 0; i < num_accumulators; ++i)
-        {
-            this->_accumulators[i]->ReshapeLike(*bottom[i+1]);
-            this->_diffs[i]->ReshapeLike(*bottom[i+1]);
-        }
+        CHECK_EQ(this->_sigmoid_top_vecs[i][0]->count(), bottom[i+1]->count())
+                << "Sigmoid layer must have the same size as accumulator!";
     }
 }
 
 
 template <typename Dtype>
 void MultiscaleAccumulatorLossLayer<Dtype>::Forward_cpu (const vector<Blob<Dtype>*> &bottom,
-                                               const vector<Blob<Dtype>*> &top)
+                                                         const vector<Blob<Dtype>*> &top)
 {
     // Create the accumulators from the labels
     this->_buildAccumulators(bottom[0]);
 
-    const float nr = this->layer_param_.accumulator_loss_param().negative_ratio();
-    Dtype loss = Dtype(0.0f);
+    Dtype loss_total  = Dtype(0.0f);
+    const int num_acc = bottom.size() - 1;
 
     // Now it is a simple squared Euclidean distance of the net outputs and the accumulators
-    int num_accumulators = bottom.size() - 1;
-    for (int i = 0; i < num_accumulators; ++i)
+    for (int i = 0; i < num_acc; ++i)
     {
-        // Store the current output - currently processed bottom blob (i=0 are labels)
-        const Blob<Dtype> *output = bottom[i+1];
-        int count = output->count();
-        caffe_sub(count, output->cpu_data(), this->_accumulators[i]->cpu_data(),
-                  this->_diffs[i]->mutable_cpu_data());
+        // Compute the sigmoid outputs - they are actually not used here, but in the backward pass to compute
+        // the diffs
+        this->_sigmoid_bottom_vecs[i][0] = bottom[i+1];
+        this->_sigmoid_layers[i]->Forward(this->_sigmoid_bottom_vecs[i], this->_sigmoid_top_vecs[i]);
 
-#ifdef USE_DIFF_WEIGHT
-        // Apply weight on the negative samples (pixels) to compensate for the smaller amount of positive
-        // pixels in the target accumulator
-        float neg_diff_weight = 1.0f / (float(count) / nr / output->shape(0));
-        Dtype num_active = this->_applyDiffWeights(i, neg_diff_weight);
-#else
-        // Apply mask on this diff - we only want to include some number of negative pixels because otherwise
-        // the learning would be skewed towards learning mostly negative examples
-        Dtype num_active = this->_applyMask(i);
-#endif
+        const int count = bottom[i+1]->count();
+        Dtype loss      = Dtype(0.0f);
 
-        Dtype dot = caffe_cpu_dot(count, this->_diffs[i]->cpu_data(), this->_diffs[i]->cpu_data());
-        loss += dot / output->shape(0) / num_active / Dtype(2); // Per image, per pixel loss
+        // Compute the loss (negative log likelihood)
+        const Dtype* output = bottom[i+1]->cpu_data();
+        const Dtype* target = this->_accumulators[i]->cpu_data();
+        for (int j = 0; j < count; ++j)
+        {
+            loss -= output[j] * (target[j] - (output[j] >= 0)) -
+                    log(1 + exp(output[j] - 2 * output[j] * (output[j] >= 0)));
+        }
+
+        loss_total += loss / count;
     }
 
     // Write the loss to the output blob
-    top[0]->mutable_cpu_data()[0] = loss;
+    top[0]->mutable_cpu_data()[0] = loss_total / num_acc;
 }
 
 
 template <typename Dtype>
 void MultiscaleAccumulatorLossLayer<Dtype>::Backward_cpu (const vector<Blob<Dtype>*> &top,
-                                                const vector<bool> &propagate_down,
-                                                const vector<Blob<Dtype>*> &bottom)
+                                                          const vector<bool> &propagate_down,
+                                                          const vector<Blob<Dtype>*> &bottom)
 {
-    int num_accumulators = bottom.size() - 1;
-    for (int i = 0; i < num_accumulators; ++i)
+    const int num_acc = bottom.size() - 1;
+    for (int i = 0; i < num_acc; ++i)
     {
         // Fill in the diff for each output accumulator
         if (propagate_down[i+1])
         {
-            const Dtype alpha = top[0]->cpu_diff()[0] / bottom[i+1]->shape(0);
-            caffe_cpu_axpby(bottom[i+1]->count(), alpha, this->_diffs[i]->cpu_data(), Dtype(0),
-                            bottom[i+1]->mutable_cpu_diff());
+            const int count = bottom[i+1]->count();
+
+            // Compute the gradient of the Cross entropy + sigmoid activation layer
+            caffe_sub(count, this->_sigmoid_outputs[i]->cpu_data(), this->_accumulators[i]->cpu_data(),
+                      bottom[i+1]->mutable_cpu_diff());
+
+            // Apply weight on the diffs to compensate for the smaller amount of positive pixels in
+            // the target accumulator
+            this->_applyDiffWeights(i, bottom[i+1]);
+
+            // Scale the gradient
+            // CAREFUL HERE! We cannot scale it too much otherwise the net will basically have such small
+            // gradients that it won't learn anything!
+            const Dtype loss_weight = top[0]->cpu_diff()[0] / (count / bottom[i+1]->shape(0));
+            caffe_scal(count, loss_weight, bottom[i+1]->mutable_cpu_diff());
         }
     }
 }
@@ -222,76 +248,33 @@ void MultiscaleAccumulatorLossLayer<Dtype>::_buildAccumulators (const Blob<Dtype
 }
 
 
-#ifndef USE_DIFF_WEIGHT
 template <typename Dtype>
-Dtype MultiscaleAccumulatorLossLayer<Dtype>::_applyMask (int i)
+void MultiscaleAccumulatorLossLayer<Dtype>::_applyDiffWeights (int i, Blob<Dtype> *bottom)
 {
-    // Apply mask - we only want to include the given ratio of negative pixels with respect to the positive
-    // ones because otherwise the learning would be skewed towards learning mostly negative examples. Thus
-    // we create a random mask on the negative examples to ensure the negative:positive ratio of samples
-    // given by the layer parameters
+    // Applies weights on the diffs in order to even the impact of the positive and negative samples on
+    // the gradient
 
     const std::shared_ptr<Blob<Dtype>> accumulator = this->_accumulators[i];
+    CHECK_EQ(accumulator->count(), bottom->count()) << "Accumulator and diff size is not the same!";
 
-    CHECK_EQ(accumulator->count(), this->_diffs[i]->count()) << "Accumulator and diff size is not the same!";
-
-    // The number of positive samples is the number of 1s in the accumulator
-    const int num_positive = caffe_cpu_asum(accumulator->count(), accumulator->cpu_data());
-    const int num_negative = num_positive * this->layer_param_.accumulator_loss_param().negative_ratio();
-
-    caffe::rng_t* rng = static_cast<caffe::rng_t*>(this->_rng->generator());
-    boost::random::uniform_int_distribution<> dist(0, accumulator->count());
-
-    Dtype* data_diff              = this->_diffs[i]->mutable_cpu_data();
+    Dtype* data_diff              = bottom->mutable_cpu_diff();
     const Dtype* data_accumulator = accumulator->cpu_data();
+
+    const float pn = caffe_cpu_asum(accumulator->count(), accumulator->cpu_data()) / bottom->shape(0);
+    const float nr = this->layer_param().accumulator_loss_param().negative_ratio();
+    float pos_diff_weight = accumulator->count() / nr / bottom->shape(0) / pn;
 
     for (int j = 0; j < accumulator->count(); ++j)
     {
-        // If this is a negative sample -> randomly choose if we mask this diff out or not
-        if (*data_accumulator == Dtype(0.0f) && dist(*rng) > num_negative)
+        if (*data_accumulator > Dtype(0.0f))
         {
-            // Mask it out
-            *data_diff = Dtype(0.0f);
+            *data_diff *= pos_diff_weight;
         }
 
         data_diff++;
         data_accumulator++;
     }
-
-    // The number of active samples (pixels) is the sum of positive and negative ones
-    return Dtype(num_positive + num_negative);
 }
-#else
-template <typename Dtype>
-Dtype MultiscaleAccumulatorLossLayer<Dtype>::_applyDiffWeights (int i, float neg_diff_weight)
-{
-    // Applies weights on the diffs of the negative samples in order to decrease their significance in
-    // the loss function
-
-    const std::shared_ptr<Blob<Dtype>> accumulator = this->_accumulators[i];
-
-    CHECK_EQ(accumulator->count(), this->_diffs[i]->count()) << "Accumulator and diff size is not the same!";
-
-    Dtype* data_diff              = this->_diffs[i]->mutable_cpu_data();
-    const Dtype* data_accumulator = accumulator->cpu_data();
-
-    for (int j = 0; j < accumulator->count(); ++j)
-    {
-        // If this is a negative sample -> multiply its diff
-        if (*data_accumulator == Dtype(0.0f))
-        {
-            *data_diff *= neg_diff_weight;
-        }
-
-        data_diff++;
-        data_accumulator++;
-    }
-
-    // The number of active samples (pixels) is the sum of positive and negative ones, which in this case is
-    // accumulator->count(), i.e. number of pixels in the accumulator
-    return Dtype(accumulator->count());
-}
-#endif
 
 
 // ----------------------------------------  LAYER INSTANTIATION  ---------------------------------------- //

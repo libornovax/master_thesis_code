@@ -129,9 +129,12 @@ void runAccumulatorDetection (const std::string &path_prototxt, const std::strin
 
             cv::Mat acc_large; cv::resize(accumulator, acc_large, image.size(), 0, 0, cv::INTER_NEAREST);
 
+            double mx;
+            cv::minMaxLoc(accumulator, 0, &mx);
+            std::cout << mx << std::endl;
 
             cv::imshow("Accumulator " + net->blob_names()[net->output_blob_indices()[a]], acc_large);
-//            saveImageAndAccumulator(image, acc_large, i++);
+//            if (net->blob_names()[net->output_blob_indices()[a]] == "acc_x4") saveImageAndAccumulator(image, acc_large, i++);
         }
 
         cv::imshow("Image", image);
