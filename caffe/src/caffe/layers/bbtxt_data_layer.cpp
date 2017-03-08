@@ -26,6 +26,30 @@
 
 namespace caffe {
 
+namespace {
+
+
+    /**
+     * @brief Computes the number of bounding boxes in the annotation
+     * @param labels Annotation of one image (dimensions 1 x MAX_NUM_BBS_PER_IMAGE x 5)
+     * @return Number of bounding boxes in this label
+     */
+    template <typename Dtype>
+    int numBBs (const Blob<Dtype> &labels)
+    {
+        for (int i = 0; i < labels.shape(1); ++i)
+        {
+            // Data are stored like this [label, xmin, ymin, xmax, ymax]
+            const Dtype *data = labels.cpu_data() + labels.offset(0, i);
+            // If the label is -1, there are no more bounding boxes
+            if (data[0] == Dtype(-1.0f)) return i;
+        }
+
+        return labels.shape(1);
+    }
+
+}
+
 template <typename Dtype>
 BBTXTDataLayer<Dtype>::BBTXTDataLayer (const LayerParameter &param)
     : BasePrefetchingDataLayer<Dtype>(param)
@@ -53,6 +77,8 @@ void BBTXTDataLayer<Dtype>::DataLayerSetUp (const vector<Blob<Dtype>*> &bottom,
     const int width      = this->layer_param_.bbtxt_param().width();
     const int batch_size = this->layer_param_.image_data_param().batch_size();
 
+    this->_rng.reset(new Caffe::RNG(caffe_rng_rand()));
+
     // Load the BBTXT file with 2D bounding box annotations
     this->_loadBBTXTFile();
     this->_i_global = 0;
@@ -63,7 +89,6 @@ void BBTXTDataLayer<Dtype>::DataLayerSetUp (const vector<Blob<Dtype>*> &bottom,
     if (this->layer_param_.image_data_param().shuffle())
     {
         // Initialize the random number generator for shuffling and shuffle the images
-        this->_rng.reset(new Caffe::RNG(caffe_rng_rand()));
         this->_shuffleImages();
     }
 
@@ -216,18 +241,98 @@ template <typename Dtype>
 void BBTXTDataLayer<Dtype>::_transformImage (const cv::Mat &cv_img, Blob<Dtype> &transformed_image,
                                              Blob<Dtype> &transformed_label)
 {
+    static int imi = 0;
     CHECK_EQ(cv_img.channels(), 3) << "Image must have 3 color channels";
 
     // Input dimensions of the network
-    const int height = this->layer_param_.bbtxt_param().height();
-    const int width  = this->layer_param_.bbtxt_param().width();
+    const int height          = this->layer_param_.bbtxt_param().height();
+    const int width           = this->layer_param_.bbtxt_param().width();
+    // This is the size of the bounding box that is detected by this network
+    const int reference_size  = this->layer_param_.bbtxt_param().reference_size();
+
+    caffe::rng_t* rng = static_cast<caffe::rng_t*>(this->_rng->generator());
 
 
-    // Crop
-    cv::Mat cv_img_cropped = cv_img;
+    // We select a bounding box from the image and then make a crop such that the bounding box is inside
+    // of it and it has the reference size
+    cv::Mat cv_img_cropped;
+    if (transformed_label.cpu_data()[0] == Dtype(-1.0f))
+    {
+        // The label of the first bounding box is -1, that means that this image contains no bounding boxes
+        cv::resize(cv_img, cv_img_cropped, cv::Size(width, height));
+    }
+    else
+    {
+        std::cout << "Doing this.................." << std::endl;
+        // There are bounding boxes - lets select one
+        const int num_bbs = numBBs(transformed_label);
+        boost::random::uniform_int_distribution<> dist(0, num_bbs-1);
+        const int bb_id = dist(*rng);  // Random bounding box id
 
-    // Mirror
+        // Get dimensions of the bounding box - format [label, xmin, ymin, xmax, ymax]
+        const Dtype * bb_data = transformed_label.cpu_data() + transformed_label.offset(0, bb_id);
+        const Dtype x = bb_data[1];
+        const Dtype y = bb_data[2];
+        const Dtype w = bb_data[3] - bb_data[1];
+        const Dtype h = bb_data[4] - bb_data[2];
 
+        const Dtype size      = std::max(w, h);
+        const int crop_width  = double(width) / reference_size * size;
+        const int crop_height = double(height) / reference_size * size;
+
+        // Select a random position of the crop, but it has to fully contain the bounding box
+        boost::random::uniform_int_distribution<> distx(x+w-crop_width, x);
+        boost::random::uniform_int_distribution<> disty(y+h-crop_height, y);
+        const int crop_x = distx(*rng);
+        const int crop_y = disty(*rng);
+
+        // Now if the crop spans outside the image we have to pad the image
+        int border_top = 0; int border_bottom = 0; int border_left = 0; int border_right = 0;
+        if (crop_x < 0) border_left = -crop_x;
+        if (crop_y < 0) border_top  = -crop_y;
+        if (crop_x+crop_width > cv_img.cols)  border_right  = crop_x+crop_width - cv_img.cols;
+        if (crop_y+crop_height > cv_img.rows) border_bottom = crop_y+crop_height - cv_img.rows;
+
+        cv::Mat cv_img_padded;
+        cv::copyMakeBorder(cv_img, cv_img_padded, border_top, border_bottom, border_left, border_right,
+                           cv::BORDER_REPLICATE);
+
+        // Crop
+        cv_img_cropped = cv_img_padded(cv::Rect(crop_x+border_left, crop_y+border_top, crop_width, crop_height));
+
+        // Resize
+        cv::resize(cv_img_cropped, cv_img_cropped, cv::Size(width, height));
+
+
+        // Update the bounding box coordinates - we need to update all annotations
+        Dtype x_scaling = float(width) / crop_width;
+        Dtype y_scaling = float(height) / crop_height;
+        for (int b = 0; b < num_bbs; ++b)
+        {
+            // Data are stored like this [label, xmin, ymin, xmax, ymax]
+            Dtype *data = transformed_label.mutable_cpu_data() + transformed_label.offset(0, b);
+            // Align with x, y of the crop
+            data[1] -= crop_x;
+            data[2] -= crop_y;
+            data[3] -= crop_x;
+            data[4] -= crop_y;
+            // Now the scaling
+            data[1] *= x_scaling;
+            data[2] *= y_scaling;
+            data[3] *= x_scaling;
+            data[4] *= y_scaling;
+
+//            cv::rectangle(cv_img_cropped, cv::Rect(data[1], data[2], data[3]-data[1], data[4]-data[2]), cv::Scalar(0,0,255), 2);
+        }
+//        cv::imwrite("cropped" + std::to_string(imi++) + ".png", cv_img_cropped);
+
+        // Mirror
+    }
+
+
+    CHECK(cv_img_cropped.data) << "Something went wrong with cropping!";
+    CHECK_EQ(cv_img_cropped.rows, transformed_image.shape(2)) << "Wrong crop height! Does not match network!";
+    CHECK_EQ(cv_img_cropped.cols, transformed_image.shape(3)) << "Wrong crop width! Does not match network!";
 
     // Normalize to 0 mean and unit variance and copy the image to the transformed_image
     // + apply exposure, noise, hue, saturation, ...
