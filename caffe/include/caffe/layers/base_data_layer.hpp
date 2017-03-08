@@ -77,6 +77,7 @@ class BasePrefetchingDataLayer :
   Batch<Dtype>* prefetch_current_;
 
   Blob<Dtype> transformed_data_;
+  Blob<Dtype> transformed_label_; // Added by Libor Novak
 };
 
 }  // namespace caffe

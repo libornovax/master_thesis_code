@@ -7,6 +7,9 @@
 #include <utility>
 #include <vector>
 #include <boost/algorithm/string.hpp>
+#include <opencv2/core/core.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/highgui/highgui.hpp>
 
 #include "caffe/data_transformer.hpp"
 #include "caffe/layers/base_data_layer.hpp"
@@ -41,13 +44,14 @@ template <typename Dtype>
 void BBTXTDataLayer<Dtype>::DataLayerSetUp (const vector<Blob<Dtype>*> &bottom,
                                             const vector<Blob<Dtype>*> &top)
 {
-    const int new_height = this->layer_param_.image_data_param().new_height();
-    const int new_width  = this->layer_param_.image_data_param().new_width();
-    const bool is_color  = this->layer_param_.image_data_param().is_color();
+    CHECK(this->layer_param_.has_bbtxt_param()) << "BBTXTParam is mandatory!";
+    CHECK(this->layer_param_.bbtxt_param().has_height()) << "Height must be set!";
+    CHECK(this->layer_param_.bbtxt_param().has_width()) << "Width must be set!";
+    CHECK(this->layer_param_.bbtxt_param().has_reference_size()) << "Reference size must be set!";
 
-    CHECK((new_height == 0 && new_width == 0) || (new_height > 0 && new_width > 0)) << "Current "
-        "implementation requires new_height and new_width to be set at the same time.";
-
+    const int height     = this->layer_param_.bbtxt_param().height();
+    const int width      = this->layer_param_.bbtxt_param().width();
+    const int batch_size = this->layer_param_.image_data_param().batch_size();
 
     // Load the BBTXT file with 2D bounding box annotations
     this->_loadBBTXTFile();
@@ -64,79 +68,65 @@ void BBTXTDataLayer<Dtype>::DataLayerSetUp (const vector<Blob<Dtype>*> &bottom,
     }
 
 
-    // Read an image, and use it to initialize the top blob
-    cv::Mat cv_img = ReadImageToCVMat(this->_images[this->_i_global].first, new_height, new_width, is_color);
-    CHECK(cv_img.data) << "Could not open " << this->_images[this->_i_global].first;
+    // This is the shape of the input blob
+    std::vector<int> top_shape = {1, 3, height, width};
+    this->transformed_data_.Reshape(top_shape);  // For prefetching
 
-    // Use data_transformer to infer the expected blob shape from a cv_image
-    std::vector<int> top_shape = this->data_transformer_->InferBlobShape(cv_img);
-
-    // We need this to speed up batch loading because we do not want to allocate new memory every time
-    this->transformed_data_.Reshape(top_shape);
-
-    // Reshape prefetch_data and top[0] according to the batch_size
-    int batch_size = this->layer_param_.image_data_param().batch_size();
     top_shape[0] = batch_size;
     top[0]->Reshape(top_shape);
 
-    LOG(INFO) << "BBTXTDataLayer bottom shape: " << top[0]->shape(0) << " x " << top[0]->shape(1) << " x "
-              << top[0]->shape(2) << " x " << top[0]->shape(3);
+    // Label blob
+    std::vector<int> label_shape = {1, MAX_NUM_BBS_PER_IMAGE, 5};
+    this->transformed_label_.Reshape(label_shape);  // For prefetching
+
+    label_shape[0] = batch_size;
+    top[1]->Reshape(label_shape);
 
 
     // Initialize prefetching
     // We also have to reshape the prefetching blobs to the correct batch size
-    for (int i = 0; i < this->prefetch_.size(); ++i) this->prefetch_[i]->data_.Reshape(top_shape);
-    // Label blob
-    std::vector<int> label_shape = {batch_size, MAX_NUM_BBS_PER_IMAGE, 5};
-    top[1]->Reshape(label_shape);
-    for (int i = 0; i < this->prefetch_.size(); ++i) this->prefetch_[i]->label_.Reshape(label_shape);
+    for (int i = 0; i < this->prefetch_.size(); ++i)
+    {
+        this->prefetch_[i]->data_.Reshape(top_shape);
+        this->prefetch_[i]->label_.Reshape(label_shape);
+    }
 }
 
 
 template <typename Dtype>
 void BBTXTDataLayer<Dtype>::load_batch (Batch<Dtype> *batch)
 {
-    // This function is called on prefetch thread
+    // This function is called on a prefetch thread
 
-    CPUTimer batch_timer;
-    batch_timer.Start();
-    double read_time = 0;
-    double trans_time = 0;
-    CPUTimer timer;
     CHECK(batch->data_.count());
     CHECK(this->transformed_data_.count());
 
     const int batch_size = this->layer_param_.image_data_param().batch_size();
-    const int new_height = this->layer_param_.image_data_param().new_height();
-    const int new_width  = this->layer_param_.image_data_param().new_width();
-    const bool is_color  = this->layer_param_.image_data_param().is_color();
-
-
 
     Dtype* prefetch_data  = batch->data_.mutable_cpu_data();
     Dtype* prefetch_label = batch->label_.mutable_cpu_data();
 
-
     for (int b = 0; b < batch_size; ++b)
     {
         // get a blob
-        timer.Start();
-        cv::Mat cv_img = ReadImageToCVMat(this->_images[this->_i_global].first, new_height,
-                                          new_width, is_color);
+        cv::Mat cv_img = cv::imread(this->_images[this->_i_global].first, CV_LOAD_IMAGE_COLOR);
         CHECK(cv_img.data) << "Could not open " << this->_images[this->_i_global].first;
-        read_time += timer.MicroSeconds();
 
-        timer.Start();
-        // Apply transformations (mirror, crop...) to the image
+        // Prepare the blob for the annotation (bounding boxes)
+        int offset_label = batch->label_.offset(b);
+        this->transformed_label_.set_cpu_data(prefetch_label + offset_label);
+        // Copy the annotation - we really have to copy it because it will be altered during image
+        // transformations like cropping or scaling
+        std::shared_ptr<Blob<Dtype>> plabel = this->_images[this->_i_global].second;
+        caffe_copy(plabel->count(), plabel->cpu_data(), this->transformed_label_.mutable_cpu_data());
+
+        // Prepare the blob for the current image
         int offset_image = batch->data_.offset(b);
         this->transformed_data_.set_cpu_data(prefetch_data + offset_image);
-        this->data_transformer_->Transform(cv_img, &(this->transformed_data_));
-        trans_time += timer.MicroSeconds();
 
-        // Copy the annotation
-        int offset_label = batch->label_.offset(b);
-        std::shared_ptr<Blob<Dtype>> plabel = this->_images[this->_i_global].second;
-        caffe_copy(plabel->count(), plabel->cpu_data(), prefetch_label+offset_label);
+        // Apply transformations (mirror, crop...) to the image and resize the image to the input blob shape
+        // of the network - setting the transformed_data_ and transformed_label_ sets it directly in the batch
+        this->_transformImage(cv_img, this->transformed_data_, this->transformed_label_);
 
         // Move index to the next image
         this->_i_global++;
@@ -147,11 +137,6 @@ void BBTXTDataLayer<Dtype>::load_batch (Batch<Dtype> *batch)
             this->_i_global = 0;
         }
     }
-
-    batch_timer.Stop();
-    DLOG(INFO) << "Prefetch batch: " << batch_timer.MilliSeconds() << " ms.";
-    DLOG(INFO) << "     Read time: " << read_time / 1000 << " ms.";
-    DLOG(INFO) << "Transform time: " << trans_time / 1000 << " ms.";
 }
 
 
@@ -224,6 +209,43 @@ void BBTXTDataLayer<Dtype>::_shuffleImages ()
 {
     caffe::rng_t* prefetch_rng = static_cast<caffe::rng_t*>(_rng->generator());
     shuffle(this->_images.begin(), this->_images.end(), prefetch_rng);
+}
+
+
+template <typename Dtype>
+void BBTXTDataLayer<Dtype>::_transformImage (const cv::Mat &cv_img, Blob<Dtype> &transformed_image,
+                                             Blob<Dtype> &transformed_label)
+{
+    CHECK_EQ(cv_img.channels(), 3) << "Image must have 3 color channels";
+
+    // Input dimensions of the network
+    const int height = this->layer_param_.bbtxt_param().height();
+    const int width  = this->layer_param_.bbtxt_param().width();
+
+
+    // Crop
+    cv::Mat cv_img_cropped = cv_img;
+
+    // Mirror
+
+
+    // Normalize to 0 mean and unit variance and copy the image to the transformed_image
+    // + apply exposure, noise, hue, saturation, ...
+    Dtype* transformed_data = transformed_image.mutable_cpu_data();
+    for (int i = 0; i < height; ++i)
+    {
+        const uchar* ptr = cv_img_cropped.ptr<uchar>(i);
+        int img_index = 0;  // Index in the cv_img_cropped
+        for (int j = 0; j < width; ++j)
+        {
+            for (int c = 0; c < 3; ++c)
+            {
+                const int top_index = (c * height + i) * width + j;
+                // Zero mean and unit variance
+                transformed_data[top_index] = (ptr[img_index++] - Dtype(128.0f)) / Dtype(128.0f);
+            }
+        }
+    }
 }
 
 

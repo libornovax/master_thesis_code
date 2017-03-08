@@ -69,6 +69,9 @@ protected:
 
     virtual void _shuffleImages ();
 
+    virtual void _transformImage (const cv::Mat &cv_img, Blob<Dtype> &transformed_image,
+                                  Blob<Dtype> &transformed_label);
+
 
     // ---------------------------------------  PROTECTED MEMBERS  --------------------------------------- //
     // List of image paths and 2D bounding box annotations in the form of a blob
