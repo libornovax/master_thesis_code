@@ -414,7 +414,7 @@ class MACCNetGenerator(object):
 				'    downsampling: %d\n'%(self.min_acc_downsampling) + \
 				'    negative_ratio: 50\n' \
 				'    circle_ratio: %f\n'%(self.circle_ratio) + \
-				'    bounds_overlap: 0.0\n' + # Change this back to 0.33 or other for multi-scale!!!
+				'    bounds_overlap: -0.5\n' + # Change this back to 0.33 or other for multi-scale!!
 				'  }\n' \
 				'}\n')
 
