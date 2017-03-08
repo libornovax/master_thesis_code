@@ -263,7 +263,6 @@ void BBTXTDataLayer<Dtype>::_transformImage (const cv::Mat &cv_img, Blob<Dtype> 
     }
     else
     {
-        std::cout << "Doing this.................." << std::endl;
         // There are bounding boxes - lets select one
         const int num_bbs = numBBs(transformed_label);
         boost::random::uniform_int_distribution<> dist(0, num_bbs-1);
