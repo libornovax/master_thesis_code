@@ -175,13 +175,13 @@ MultiscaleAccumulatorLossLayer<Dtype>::_computeSizeBounds (const int i, const in
     // The "ideal" size of a bounding box that should be detected by this accumulator
     const float ideal_size = float(2*radius+1) / cr * scale;
 
-    if (i < num_accumulators-1 && num_accumulators != 1)
+//    if (i < num_accumulators-1 && num_accumulators != 1)
     {
         // Everything but the last accumulator will have a bound above
         const float ext_above  = ((1-bo)*ideal_size)/2 + bo*ideal_size;
         bounds.second = ideal_size + ext_above;
     }
-    if (i > 0 && num_accumulators != 1)
+//    if (i > 0 && num_accumulators != 1)
     {
         // Everything but the first accumulator will have a bound below
         const float difference = ideal_size / 2.0f;
