@@ -451,12 +451,11 @@ class MACCNetGenerator(object):
 				'  image_data_param {\n' \
 				'    source: ""\n' \
 				'    batch_size: 16\n' \
-				'    new_height: 128\n' \
-				'    new_width: 256\n' \
 				'  }\n' \
-				'  transform_param {\n' \
-				'    scale: 0.0078125\n' \
-				'    mean_value: 128\n' \
+				'  bbtxt_param {\n' \
+				'    width: 128\n' \
+				'    height: 256\n' \
+				'    reference_size: 80\n' \
 				'  }\n' \
 				'}\n')
 
