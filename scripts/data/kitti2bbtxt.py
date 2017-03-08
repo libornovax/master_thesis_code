@@ -27,6 +27,9 @@ __email__  = 'novakli2@fel.cvut.cz'
 import argparse
 import os
 
+from mappings.utils import LabelMappingManager
+from mappings.utils import available_categories
+
 
 ####################################################################################################
 #                                           DEFINITIONS                                            # 
@@ -44,6 +47,10 @@ LABELS = {
 	'Tram': 7,
 	# Throw away 'Misc' and 'DontCare'
 }
+
+# Initialize the LabelMappingManager
+LMM     = LabelMappingManager()
+MAPPING = LMM.get_mapping('kitti')
 
 
 ####################################################################################################
@@ -87,7 +94,7 @@ def compute_hw_ratio(data):
 	return h/w
 
 
-def translate_file(path_labels, path_images, difficulty, outfile, filter):
+def translate_file(path_labels, path_images, difficulty, outfile, filter, label):
 	"""
 	Runs the translation of the KITTI label format into the BBTXT format.
 
@@ -97,6 +104,7 @@ def translate_file(path_labels, path_images, difficulty, outfile, filter):
 		difficulty:  Difficulty of the dataset by KITTI standards (ignores truncation percentage!)
 		outfile:     File handle of the open output BBTXT file
 		filter:      Ratio of h/w above which will bounding boxes be filtered
+		label:       Which class label should be extracted from the dataset (default None)
 	"""
 	print('-- TRANSLATING KITTI TO BBTXT')
 
@@ -118,6 +126,9 @@ def translate_file(path_labels, path_images, difficulty, outfile, filter):
 				# First element of the data is the label. We don't want to process 'Misc' and
 				# 'DontCare' labels
 				if data[0] == 'Misc' or data[0] == 'DontCare': continue
+
+				# Check label, if required
+				if label is not None and MAPPING[LABELS[data[0]]] != label: continue
 
 				# Check the difficulty of this bounding box
 				if not check_label_difficulty(data, difficulty): continue
@@ -163,6 +174,9 @@ def parse_arguments():
 						help='Ratio h/w. If provided, the bounding boxes with their h/w above the '\
 							 'provided ratio will be filtered out. This is to filter incorrectly ' \
 							 'labeled objects')
+	parser.add_argument('--label', metavar='label', type=str, default=None,
+						help='Single class of objects that should be separated from the dataset. ' \
+							 'One from ' + str(available_categories(MAPPING)))
 
 	args = parser.parse_args()
 
@@ -178,13 +192,17 @@ def parse_arguments():
 		print('Unknown difficulty "%s"!'%(args.difficulty))
 		parser.print_help()
 		exit(1)
+	if args.label is not None and args.label not in available_categories(MAPPING):
+		print('Unknown class label "%s"!'%(args.label))
+		exit(1)
 
 	return args
 
 
 def main():
 	args = parse_arguments()
-	translate_file(args.path_labels, args.path_images, args.difficulty, args.outfile, args.filter)
+	translate_file(args.path_labels, args.path_images, args.difficulty, args.outfile, args.filter,
+				   args.label)
 	args.outfile.close()
 
 
