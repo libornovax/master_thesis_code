@@ -183,11 +183,11 @@ void BBTXTDataLayer<Dtype>::_loadBBTXTFile ()
             // This is a label to a new image
             if (this->_images.size() > 0 && i < MAX_NUM_BBS_PER_IMAGE)
             {
-                // Finalize the last annotation - we put 0s as next bounding box to signalize the end - this
-                // is because each image can have a different number of bounding boxes
+                // Finalize the last annotation - we put -1 as next bounding box label to signalize
+                // the end - this is because each image can have a different number of bounding boxes
                 int offset = this->_images.back().second->offset(i);
                 Dtype* bb_position = this->_images.back().second->mutable_cpu_data() + offset;
-                for (int j = 0; j < 5; j++) bb_position[j] = Dtype(0.0f);
+                bb_position[0] = Dtype(-1.0f);
             }
 
             CHECK(boost::filesystem::exists(data[0])) << "File '" << data[0] << "' not found!";
