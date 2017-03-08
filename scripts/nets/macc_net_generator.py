@@ -412,7 +412,7 @@ class MACCNetGenerator(object):
 				'  accumulator_loss_param {\n' \
 				'    radius: %d\n'%(self.radius) + \
 				'    downsampling: %d\n'%(self.min_acc_downsampling) + \
-				'    negative_ratio: 4\n' \
+				'    negative_ratio: 50\n' \
 				'    circle_ratio: %f\n'%(self.circle_ratio) + \
 				'    bounds_overlap: 0.33\n' \
 				'  }\n' \
@@ -450,7 +450,7 @@ class MACCNetGenerator(object):
 				'  }\n' \
 				'  image_data_param {\n' \
 				'    source: ""\n' \
-				'    batch_size: 32\n' \
+				'    batch_size: 16\n' \
 				'    new_height: 128\n' \
 				'    new_width: 256\n' \
 				'  }\n' \

@@ -34,7 +34,6 @@ void MultiscaleAccumulatorLossLayer<Dtype>::LayerSetUp (const vector<Blob<Dtype>
     int scale = this->layer_param_.accumulator_loss_param().downsampling();
 
     this->_accumulators.clear();
-    this->_diffs.clear();
     this->_scales.clear();
     this->_bb_bounds.clear();
 
@@ -46,7 +45,6 @@ void MultiscaleAccumulatorLossLayer<Dtype>::LayerSetUp (const vector<Blob<Dtype>
     for (int i = 0; i < num_accumulators; ++i)
     {
         this->_accumulators.push_back(std::make_shared<Blob<Dtype>>());
-        this->_diffs.push_back(std::make_shared<Blob<Dtype>>());
         // Compute the scales of the accumulators
         this->_scales.push_back(scale);
         // Compute the bounds for bounding boxes, which should be included in this accumulator
@@ -77,7 +75,6 @@ void MultiscaleAccumulatorLossLayer<Dtype>::Reshape (const vector<Blob<Dtype>*> 
     for (int i = 0; i < num_accumulators; ++i)
     {
         this->_accumulators[i]->ReshapeLike(*bottom[i+1]);
-        this->_diffs[i]->ReshapeLike(*bottom[i+1]);
 
         this->_sigmoid_layers[i]->Reshape(this->_sigmoid_bottom_vecs[i], this->_sigmoid_top_vecs[i]);
 
@@ -138,6 +135,7 @@ void MultiscaleAccumulatorLossLayer<Dtype>::Backward_cpu (const vector<Blob<Dtyp
         {
             const int count = bottom[i+1]->count();
 
+            // Compute the gradient of the Cross entropy + sigmoid activation layer
             caffe_sub(count, this->_sigmoid_outputs[i]->cpu_data(), this->_accumulators[i]->cpu_data(),
                       bottom[i+1]->mutable_cpu_diff());
 
@@ -259,7 +257,7 @@ void MultiscaleAccumulatorLossLayer<Dtype>::_applyDiffWeights (int i, Blob<Dtype
     const std::shared_ptr<Blob<Dtype>> accumulator = this->_accumulators[i];
     CHECK_EQ(accumulator->count(), bottom->count()) << "Accumulator and diff size is not the same!";
 
-    Dtype* data_diff              = bottom->mutable_cpu_data();
+    Dtype* data_diff              = bottom->mutable_cpu_diff();
     const Dtype* data_accumulator = accumulator->cpu_data();
 
     const float pn = caffe_cpu_asum(accumulator->count(), accumulator->cpu_data()) / bottom->shape(0);

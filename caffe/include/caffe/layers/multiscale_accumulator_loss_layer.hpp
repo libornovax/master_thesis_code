@@ -89,8 +89,6 @@ protected:
     // ---------------------------------------  PROTECTED MEMBERS  --------------------------------------- //
     // Hough map - accumulator of object centers (shape of the blob is the same as bottom[0])
     std::vector<std::shared_ptr<Blob<Dtype>>> _accumulators;
-    // Diff of the accumulator and the net output - saved for backpropagation
-    std::vector<std::shared_ptr<Blob<Dtype>>> _diffs;
     // Scales (downsamplings) of the accumulators
     std::vector<int> _scales;
     // Each accumulator only includes some bounding boxes - given the size of the boundig box. The _bb_bounds
