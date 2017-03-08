@@ -237,7 +237,7 @@ void MultiscaleAccumulatorLossLayer<Dtype>::_buildAccumulators (const Blob<Dtype
                 // Check if the size of the bounding box fits within the bounds of this accumulator - the
                 // largest dimension of the bounding box has to by within the bounds
                 Dtype largest_dim = std::max(data[3]-data[1], data[4]-data[2]);
-                if (largest_dim > this->_bb_bounds[a].first && largest_dim < this->_bb_bounds[a].second)
+                if (largest_dim >= this->_bb_bounds[a].first && largest_dim <= this->_bb_bounds[a].second)
                 {
                     cv::circle(acc, cv::Point(scaling_ratio*(data[1]+data[3])/2,
                                               scaling_ratio*(data[2]+data[4])/2), radius, cv::Scalar(1), -1);
