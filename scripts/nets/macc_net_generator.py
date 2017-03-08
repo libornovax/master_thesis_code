@@ -453,8 +453,8 @@ class MACCNetGenerator(object):
 				'    batch_size: 16\n' \
 				'  }\n' \
 				'  bbtxt_param {\n' \
-				'    width: 128\n' \
-				'    height: 256\n' \
+				'    width: 256\n' \
+				'    height: 128\n' \
 				'    reference_size: 80\n' \
 				'  }\n' \
 				'}\n')
