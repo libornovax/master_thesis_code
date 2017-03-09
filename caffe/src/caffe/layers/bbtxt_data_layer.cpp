@@ -226,6 +226,14 @@ void BBTXTDataLayer<Dtype>::_loadBBTXTFile ()
             LOG(WARNING) << "Skipping bb - max number of bounding boxes per image reached.";
         }
     }
+
+    // Close the last annotation
+    if (i < MAX_NUM_BBS_PER_IMAGE)
+    {
+        int offset = this->_images.back().second->offset(i);
+        Dtype* bb_position = this->_images.back().second->mutable_cpu_data() + offset;
+        bb_position[0] = Dtype(-1.0f);
+    }
 }
 
 
