@@ -81,10 +81,11 @@ void BBTXTDataLayer<Dtype>::DataLayerSetUp (const vector<Blob<Dtype>*> &bottom,
 
     // Load the BBTXT file with 2D bounding box annotations
     this->_loadBBTXTFile();
-    this->_i_global = 0;
+    this->_i_global     = 0;
+    this->_bb_id_global = 0;
 
     CHECK(!this->_images.empty()) << "The given BBTXT file is empty!";
-    LOG(INFO) << "There are " << this->_images.size() << " images in the dataset set.";
+    LOG(INFO) << "There are " << this->_images.size() << " images in the dataset.";
 
     if (this->layer_param_.image_data_param().shuffle())
     {
@@ -133,7 +134,6 @@ void BBTXTDataLayer<Dtype>::load_batch (Batch<Dtype> *batch)
 
     for (int b = 0; b < batch_size; ++b)
     {
-        // get a blob
         cv::Mat cv_img = cv::imread(this->_images[this->_i_global].first, CV_LOAD_IMAGE_COLOR);
         CHECK(cv_img.data) << "Could not open " << this->_images[this->_i_global].first;
 
@@ -149,12 +149,28 @@ void BBTXTDataLayer<Dtype>::load_batch (Batch<Dtype> *batch)
         int offset_image = batch->data_.offset(b);
         this->transformed_data_.set_cpu_data(prefetch_data + offset_image);
 
-        // Apply transformations (mirror, crop...) to the image and resize the image to the input blob shape
-        // of the network - setting the transformed_data_ and transformed_label_ sets it directly in the batch
-        this->_transformImage(cv_img, this->transformed_data_, this->transformed_label_);
+
+        // We select a bounding box from the image and then make a crop such that the bounding box is inside
+        // of it and it has the reference size (Training - we select a random bounding box to crop from each
+        // image, Testing - crop all bounding boxes from the image - this way we ensure the test set is
+        // always the same)
+        this->_cropAndTransform(cv_img, this->transformed_data_, this->transformed_label_);
+
 
         // Move index to the next image
-        this->_i_global++;
+        if (this->phase_ == TRAIN) this->_i_global++;
+        else
+        {
+            // Test phase - cropping all bounding boxes - move index to the next one in the image
+            this->_bb_id_global++;
+            if (this->_bb_id_global >= numBBs(this->transformed_label_))
+            {
+                // This image has no more bounding boxes, move to the next image
+                this->_bb_id_global = 0;
+                this->_i_global++;
+            }
+        }
+
         if (this->_i_global >= this->_images.size())
         {
             // Restart the counter from the begining
@@ -246,20 +262,10 @@ void BBTXTDataLayer<Dtype>::_shuffleImages ()
 
 
 template <typename Dtype>
-void BBTXTDataLayer<Dtype>::_transformImage (const cv::Mat &cv_img, Blob<Dtype> &transformed_image,
+void BBTXTDataLayer<Dtype>::_cropAndTransform (const cv::Mat &cv_img, Blob<Dtype> &transformed_image,
                                              Blob<Dtype> &transformed_label)
 {
-    static int imi = 0;
     CHECK_EQ(cv_img.channels(), 3) << "Image must have 3 color channels";
-
-    // Input dimensions of the network
-    const int height          = this->layer_param_.bbtxt_param().height();
-    const int width           = this->layer_param_.bbtxt_param().width();
-    // This is the size of the bounding box that is detected by this network
-    const int reference_size  = this->layer_param_.bbtxt_param().reference_size();
-
-    caffe::rng_t* rng = static_cast<caffe::rng_t*>(this->_rng->generator());
-
 
     // We select a bounding box from the image and then make a crop such that the bounding box is inside
     // of it and it has the reference size
@@ -267,79 +273,123 @@ void BBTXTDataLayer<Dtype>::_transformImage (const cv::Mat &cv_img, Blob<Dtype> 
     if (transformed_label.cpu_data()[0] == Dtype(-1.0f))
     {
         // The label of the first bounding box is -1, that means that this image contains no bounding boxes
-        cv::resize(cv_img, cv_img_cropped, cv::Size(width, height));
+        cv::resize(cv_img, cv_img_cropped, cv::Size(this->layer_param_.bbtxt_param().width(),
+                                                    this->layer_param_.bbtxt_param().height()));
     }
     else
     {
         // There are bounding boxes - lets select one
-        const int num_bbs = numBBs(transformed_label);
-        boost::random::uniform_int_distribution<> dist(0, num_bbs-1);
-        const int bb_id = dist(*rng);  // Random bounding box id
-
-        // Get dimensions of the bounding box - format [label, xmin, ymin, xmax, ymax]
-        const Dtype * bb_data = transformed_label.cpu_data() + transformed_label.offset(0, bb_id);
-        const Dtype x = bb_data[1];
-        const Dtype y = bb_data[2];
-        const Dtype w = bb_data[3] - bb_data[1];
-        const Dtype h = bb_data[4] - bb_data[2];
-
-        const Dtype size      = std::max(w, h);
-        const int crop_width  = double(width) / reference_size * size;
-        const int crop_height = double(height) / reference_size * size;
-
-        // Select a random position of the crop, but it has to fully contain the bounding box
-        boost::random::uniform_int_distribution<> distx(x+w-crop_width, x);
-        boost::random::uniform_int_distribution<> disty(y+h-crop_height, y);
-        const int crop_x = distx(*rng);
-        const int crop_y = disty(*rng);
-
-        // Now if the crop spans outside the image we have to pad the image
-        int border_top = 0; int border_bottom = 0; int border_left = 0; int border_right = 0;
-        if (crop_x < 0) border_left = -crop_x;
-        if (crop_y < 0) border_top  = -crop_y;
-        if (crop_x+crop_width > cv_img.cols)  border_right  = crop_x+crop_width - cv_img.cols;
-        if (crop_y+crop_height > cv_img.rows) border_bottom = crop_y+crop_height - cv_img.rows;
-
-        cv::Mat cv_img_padded;
-        cv::copyMakeBorder(cv_img, cv_img_padded, border_top, border_bottom, border_left, border_right,
-                           cv::BORDER_REPLICATE);
-
-        // Crop
-        cv_img_cropped = cv_img_padded(cv::Rect(crop_x+border_left, crop_y+border_top, crop_width, crop_height));
-
-        // Resize
-        cv::resize(cv_img_cropped, cv_img_cropped, cv::Size(width, height));
-
-
-        // Update the bounding box coordinates - we need to update all annotations
-        Dtype x_scaling = float(width) / crop_width;
-        Dtype y_scaling = float(height) / crop_height;
-        for (int b = 0; b < num_bbs; ++b)
+        int bb_id;
+        if (this->phase_ == TRAIN)
         {
-            // Data are stored like this [label, xmin, ymin, xmax, ymax]
-            Dtype *data = transformed_label.mutable_cpu_data() + transformed_label.offset(0, b);
-            // Align with x, y of the crop
-            data[1] -= crop_x;
-            data[2] -= crop_y;
-            data[3] -= crop_x;
-            data[4] -= crop_y;
-            // Now the scaling
-            data[1] *= x_scaling;
-            data[2] *= y_scaling;
-            data[3] *= x_scaling;
-            data[4] *= y_scaling;
-
-//            cv::rectangle(cv_img_cropped, cv::Rect(data[1], data[2], data[3]-data[1], data[4]-data[2]), cv::Scalar(0,0,255), 2);
+            caffe::rng_t* rng = static_cast<caffe::rng_t*>(this->_rng->generator());
+            boost::random::uniform_int_distribution<> dist(0, numBBs(transformed_label)-1);
+            bb_id = dist(*rng);  // Random bounding box id
         }
-//        cv::imwrite("cropped" + std::to_string(imi++) + ".png", cv_img_cropped);
+        else
+        {
+            bb_id = this->_bb_id_global;
+        }
+
+        // Crop this bounding box from the image
+        this->_cropBBFromImage(cv_img, cv_img_cropped, transformed_label, bb_id);
 
         // Mirror
     }
 
+    // Copy the cropped and transformed image to the input blob
+    this->_applyPixelTransformationsAndCopyOut(cv_img_cropped, transformed_image);
+}
 
+
+template <typename Dtype>
+void BBTXTDataLayer<Dtype>::_cropBBFromImage (const cv::Mat &cv_img, cv::Mat &cv_img_cropped_out,
+                                              Blob<Dtype> &transformed_label, int bb_id)
+{
+    // Input dimensions of the network
+    const int height          = this->layer_param_.bbtxt_param().height();
+    const int width           = this->layer_param_.bbtxt_param().width();
+    // This is the size of the bounding box that is detected by this network
+    const int reference_size  = this->layer_param_.bbtxt_param().reference_size();
+
+
+    // Get dimensions of the bounding box - format [label, xmin, ymin, xmax, ymax]
+    const Dtype *bb_data = transformed_label.cpu_data() + transformed_label.offset(0, bb_id);
+    const Dtype x = bb_data[1];
+    const Dtype y = bb_data[2];
+    const Dtype w = bb_data[3] - bb_data[1];
+    const Dtype h = bb_data[4] - bb_data[2];
+
+    const Dtype size      = std::max(w, h);
+    const int crop_width  = double(width) / reference_size * size;
+    const int crop_height = double(height) / reference_size * size;
+
+    // Select a random position of the crop, but it has to fully contain the bounding box
+    int crop_x, crop_y;
+    if (this->phase_ == TRAIN)
+    {
+        // In training we want to create a random crop around the bounding box
+        caffe::rng_t* rng = static_cast<caffe::rng_t*>(this->_rng->generator());
+        boost::random::uniform_int_distribution<> distx(x+w-crop_width, x);
+        boost::random::uniform_int_distribution<> disty(y+h-crop_height, y);
+        crop_x = distx(*rng);
+        crop_y = disty(*rng);
+    }
+    else
+    {
+        // In testing we want to always crop the same crop. Thus we will place the bounding box to the center
+        // of the crop
+        crop_x = x + w/2 - crop_width/2;
+        crop_y = y + h/2 - crop_height/2;
+    }
+
+    // Now if the crop spans outside the image we have to pad the image
+    int border_left   = (crop_x < 0) ? -crop_x : 0;
+    int border_top    = (crop_y < 0) ? -crop_y : 0;
+    int border_right  = (crop_x+crop_width  > cv_img.cols) ? (crop_x+crop_width  - cv_img.cols) : 0;
+    int border_bottom = (crop_y+crop_height > cv_img.rows) ? (crop_y+crop_height - cv_img.rows) : 0;
+
+    cv::Mat cv_img_padded;
+    cv::copyMakeBorder(cv_img, cv_img_padded, border_top, border_bottom, border_left, border_right,
+                       cv::BORDER_REPLICATE);
+    // Crop
+    cv_img_cropped_out = cv_img_padded(cv::Rect(crop_x+border_left, crop_y+border_top, crop_width, crop_height));
+    cv::resize(cv_img_cropped_out, cv_img_cropped_out, cv::Size(width, height));
+
+
+    // Update the bounding box coordinates - we need to update all annotations
+    Dtype x_scaling   = float(width) / crop_width;
+    Dtype y_scaling   = float(height) / crop_height;
+    for (int b = 0; b < MAX_NUM_BBS_PER_IMAGE; ++b)
+    {
+        // Data are stored like this [label, xmin, ymin, xmax, ymax]
+        Dtype *data = transformed_label.mutable_cpu_data() + transformed_label.offset(0, b);
+
+        if (data[0] == Dtype(-1.0f)) break;
+
+        // Align with x, y of the crop and scale
+        data[1] = (data[1]-crop_x) * x_scaling;
+        data[2] = (data[2]-crop_y) * y_scaling;
+        data[3] = (data[3]-crop_x) * x_scaling;
+        data[4] = (data[4]-crop_y) * y_scaling;
+
+//        cv::rectangle(cv_img_cropped_out, cv::Rect(data[1], data[2], data[3]-data[1], data[4]-data[2]), cv::Scalar(0,0,255), 2);
+    }
+//    static int imi = 0;
+//    if(this->phase_ == TRAIN) cv::imwrite("cropped" + std::to_string(imi++) + ".png", cv_img_cropped_out);
+}
+
+
+template <typename Dtype>
+void BBTXTDataLayer<Dtype>::_applyPixelTransformationsAndCopyOut (const cv::Mat &cv_img_cropped,
+                                                                  Blob<Dtype> &transformed_image)
+{
     CHECK(cv_img_cropped.data) << "Something went wrong with cropping!";
     CHECK_EQ(cv_img_cropped.rows, transformed_image.shape(2)) << "Wrong crop height! Does not match network!";
     CHECK_EQ(cv_img_cropped.cols, transformed_image.shape(3)) << "Wrong crop width! Does not match network!";
+
+    const int width  = cv_img_cropped.cols;
+    const int height = cv_img_cropped.rows;
 
     // Normalize to 0 mean and unit variance and copy the image to the transformed_image
     // + apply exposure, noise, hue, saturation, ...

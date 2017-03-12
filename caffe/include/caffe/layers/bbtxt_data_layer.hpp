@@ -65,18 +65,50 @@ protected:
 
     virtual void load_batch (Batch<Dtype> *batch) override;
 
+    /**
+     * @brief Loads the whole input file in the memory and creates label blobs
+     */
     virtual void _loadBBTXTFile ();
 
+    /**
+     * @brief Shuffle images in the dataset
+     */
     virtual void _shuffleImages ();
 
-    virtual void _transformImage (const cv::Mat &cv_img, Blob<Dtype> &transformed_image,
-                                  Blob<Dtype> &transformed_label);
+    /**
+     * @brief Crops a window from the given image and resamples it to the network input blob
+     * @param cv_img Image to be cropped from
+     * @param transformed_image Output blob (input blob of the network)
+     * @param transformed_label Annotation of the image - will be transformed according to crop
+     */
+    virtual void _cropAndTransform (const cv::Mat &cv_img, Blob<Dtype> &transformed_image,
+                                    Blob<Dtype> &transformed_label);
+
+    /**
+     * @brief Subroutine of the previous method. Performs only the cropping part with label adjustment
+     * @param cv_img Image to be cropped from
+     * @param cv_img_cropped_out Output cropped image
+     * @param transformed_label Annotation of the image - will be transformed according to crop
+     * @param bb_id Id of the bounding box that should be used to specify the crop
+     */
+    virtual void _cropBBFromImage (const cv::Mat &cv_img, cv::Mat &cv_img_cropped_out,
+                                   Blob<Dtype> &transformed_label, int bb_id);
+
+    /**
+     * @brief Converts values to 0 mean, unit variance and adds some hue, exposure,... adjustments
+     * @param cv_img_cropped Already cropped image
+     * @param transformed_image Input to the network to which the transformed image will be copied
+     */
+    virtual void _applyPixelTransformationsAndCopyOut (const cv::Mat &cv_img_cropped,
+                                                       Blob<Dtype> &transformed_image);
 
 
     // ---------------------------------------  PROTECTED MEMBERS  --------------------------------------- //
     // List of image paths and 2D bounding box annotations in the form of a blob
     std::vector<std::pair<std::string, std::shared_ptr<Blob<Dtype>>>> _images;
+    // Indices for loading images
     int _i_global;
+    int _bb_id_global;
     // Random number generator
     shared_ptr<Caffe::RNG> _rng;
 
