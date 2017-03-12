@@ -309,10 +309,18 @@ void BBTXTDataLayer<Dtype>::_cropBBFromImage (const cv::Mat &cv_img, cv::Mat &cv
                                               Blob<Dtype> &transformed_label, int bb_id)
 {
     // Input dimensions of the network
-    const int height          = this->layer_param_.bbtxt_param().height();
-    const int width           = this->layer_param_.bbtxt_param().width();
+    const int height   = this->layer_param_.bbtxt_param().height();
+    const int width    = this->layer_param_.bbtxt_param().width();
     // This is the size of the bounding box that is detected by this network
-    const int reference_size  = this->layer_param_.bbtxt_param().reference_size();
+    int reference_size = this->layer_param_.bbtxt_param().reference_size();
+    caffe::rng_t* rng  = static_cast<caffe::rng_t*>(this->_rng->generator());
+
+    if (this->phase_ == TRAIN)
+    {
+        // Vary the reference bounding box size a bit, i.e. the size of the object when it is cropped
+        boost::random::uniform_int_distribution<> dists(-reference_size/20, reference_size/10);
+        reference_size += dists(*rng);
+    }
 
 
     // Get dimensions of the bounding box - format [label, xmin, ymin, xmax, ymax]
@@ -331,7 +339,6 @@ void BBTXTDataLayer<Dtype>::_cropBBFromImage (const cv::Mat &cv_img, cv::Mat &cv
     if (this->phase_ == TRAIN)
     {
         // In training we want to create a random crop around the bounding box
-        caffe::rng_t* rng = static_cast<caffe::rng_t*>(this->_rng->generator());
         boost::random::uniform_int_distribution<> distx(x+w-crop_width, x);
         boost::random::uniform_int_distribution<> disty(y+h-crop_height, y);
         crop_x = distx(*rng);
