@@ -295,6 +295,8 @@ void BBTXTDataLayer<Dtype>::_cropAndTransform (const cv::Mat &cv_img, Blob<Dtype
         this->_cropBBFromImage(cv_img, cv_img_cropped, transformed_label, bb_id);
 
         // Mirror
+
+        // Rotate
     }
 
     // Copy the cropped and transformed image to the input blob
@@ -391,23 +393,60 @@ void BBTXTDataLayer<Dtype>::_applyPixelTransformationsAndCopyOut (const cv::Mat 
     const int width  = cv_img_cropped.cols;
     const int height = cv_img_cropped.rows;
 
+    // Distortions of the image color space - during testing those will be 0
+    Dtype exposure         = Dtype(0.0f);
+    std::vector<Dtype> bgr = {Dtype(0.0f), Dtype(0.0f), Dtype(0.0f)};
+    cv::Mat noise          = cv::Mat::zeros(height, width, CV_32FC3);
+    if (this->phase_ == TRAIN)
+    {
+        // Apply random transformations
+        caffe::rng_t* rng = static_cast<caffe::rng_t*>(this->_rng->generator());
+
+        boost::random::uniform_int_distribution<> diste(-30, 30);  // Exposure
+        exposure = diste(*rng);
+
+        boost::random::uniform_int_distribution<> distbgr(-20, 20);  // Hue
+        bgr[0] = distbgr(*rng);
+        bgr[1] = distbgr(*rng);
+        bgr[2] = distbgr(*rng);
+
+        boost::random::uniform_int_distribution<> distn(0, 25);  // Noise standard deviation
+        cv::randn(noise, 0, distn(*rng));
+    }
+
     // Normalize to 0 mean and unit variance and copy the image to the transformed_image
     // + apply exposure, noise, hue, saturation, ...
     Dtype* transformed_data = transformed_image.mutable_cpu_data();
     for (int i = 0; i < height; ++i)
     {
-        const uchar* ptr = cv_img_cropped.ptr<uchar>(i);
+        const uchar* ptr  = cv_img_cropped.ptr<uchar>(i);
+        const float* ptrn = noise.ptr<float>(i);
         int img_index = 0;  // Index in the cv_img_cropped
         for (int j = 0; j < width; ++j)
         {
             for (int c = 0; c < 3; ++c)
             {
                 const int top_index = (c * height + i) * width + j;
+                // Apply exposure change, hue distortion, noise
+                const Dtype val = Dtype(ptr[img_index]) + exposure + bgr[c] + Dtype(ptrn[img_index]);
                 // Zero mean and unit variance
-                transformed_data[top_index] = (ptr[img_index++] - Dtype(128.0f)) / Dtype(128.0f);
+                transformed_data[top_index] = (std::max(Dtype(0.0f), std::min(Dtype(255.0f), val))
+                        - Dtype(128.0f)) / Dtype(128.0f);
+                img_index++;
             }
         }
     }
+
+//    std::vector<cv::Mat> chnls;
+//    chnls.push_back(cv::Mat(height, width, CV_32FC1, transformed_image.mutable_cpu_data()+transformed_image.offset(0,0)));
+//    chnls.push_back(cv::Mat(height, width, CV_32FC1, transformed_image.mutable_cpu_data()+transformed_image.offset(0,1)));
+//    chnls.push_back(cv::Mat(height, width, CV_32FC1, transformed_image.mutable_cpu_data()+transformed_image.offset(0,2)));
+//    cv::Mat img; cv::merge(chnls, img);
+//    img *= 128.0f;
+//    img += cv::Scalar(128.0f,128.0f,128.0f);
+//    cv::Mat img_u; img.convertTo(img_u, CV_8UC3);
+//    static int imi = 0;
+//    cv::imwrite("transfromed" + std::to_string(imi++) + ".png", img_u);
 }
 
 
