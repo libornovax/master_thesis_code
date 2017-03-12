@@ -1,0 +1,19 @@
+#
+# 03/12/2017
+# Libor Novak
+#
+# Mapping of MIT Street Scenes from numbers (the numbers are created during translation to BBTXT in
+# mitss2bbtxt.py) to labels
+#
+
+name: mitss
+mappings:
+    1: building  # building
+    2: bicycle   # bicycle
+    3: car       # car
+    4: sky       # sky
+    5: tree      # tree
+    6: person    # pedestrian
+    7: store     # store
+    8: sidewalk  # sidewalk
+    9: road      # road
