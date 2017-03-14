@@ -269,9 +269,6 @@ void BBTXTLossLayer<Dtype>::_applyDiffWeights ()
     const float nr = this->layer_param().accumulator_loss_param().negative_ratio();
     const float pos_diff_weight = (count_channel-pn) / nr / pn;
 
-    std::cout << "pn: " << pn << std::endl;
-    std::cout << "pos diff weight: " << pos_diff_weight << std::endl;
-
     for (int b = 0; b < this->_accumulator->shape(0); ++b)
     {
         const Dtype* data_acc_prob = this->_accumulator->cpu_data() + this->_accumulator->offset(b, 0);
