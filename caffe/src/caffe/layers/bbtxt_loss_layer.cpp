@@ -193,22 +193,16 @@ void BBTXTLossLayer<Dtype>::_buildAccumulator (const Blob<Dtype> *labels)
                     const int x = (data[1]+data[3]) / 2;
                     const int y = (data[2]+data[4]) / 2;
 
-                    // Either 1 for probability or coordinate relative to the object centroid. The coordinates
-                    // are converted to approximately [0,1], i.e. the ideal bounding box has coordinates
-                    // [0,0], [1,1], but the actual bounding boxes will differ in both dimensions
-                    cv::Scalar value = cv::Scalar(Dtype(1.0f));
-                    if (c == 1 || c == 3)
+                    // Either 1 for probability or coordinates relative to the object centroid
+                    if (c == 0)
                     {
-                        // xmin, xmax
-                        value = cv::Scalar(Dtype(0.5f + (data[c] - x) / this->_ideal_size));
+                        cv::circle(acc, cv::Point(scaling_ratio*x,
+                                                  scaling_ratio*y), radius, cv::Scalar(Dtype(1.0f)), -1);
                     }
-                    else if (c == 2 || c == 4)
+                    else
                     {
-                        // ymin, ymax
-                        value = cv::Scalar(Dtype(0.5f + (data[c] - y) / this->_ideal_size));
+                        this->_renderCoordinateCircle(acc, x, y, data[c], c);
                     }
-
-                    cv::circle(acc, cv::Point(scaling_ratio*x, scaling_ratio*y), radius, value, -1);
                 }
             }
         }
@@ -283,6 +277,54 @@ void BBTXTLossLayer<Dtype>::_applyDiffWeights ()
 
             data_diff_prob++;
             data_acc_prob++;
+        }
+    }
+}
+
+
+template <typename Dtype>
+void BBTXTLossLayer<Dtype>::_renderCoordinateCircle (cv::Mat &acc, int x, int y, Dtype value, int channel)
+{
+    // The circles in the accumulators with the coordinates have to be rendered separately because the value
+    // of each pixel differs based on the pixel position inside of the bounding box
+
+    const Dtype DUMMY          = 9999.0f;
+    const int radius           = this->layer_param_.accumulator_loss_param().radius();
+    const double scaling_ratio = 1.0 / this->_scale;
+
+    // Because I don't want to take care of the plotting of the circle myself, I use the OpenCV function and
+    // then replace the values - first create a circle with a dummy value
+    cv::circle(acc, cv::Point(scaling_ratio*x, scaling_ratio*y), radius, cv::Scalar(DUMMY), -1);
+
+    // Now go through the pixels in the circle's bounding box and if there is the DUMMY value compute
+    // the real value
+    for (int i = -radius; i <= radius; ++i)
+    {
+        for (int j = -radius; j <= radius; ++j)
+        {
+            int xp = scaling_ratio*x + j;
+            int yp = scaling_ratio*y + i;
+
+            if (xp >= 0 && xp < acc.cols && yp >= 0 && yp < acc.rows)
+            {
+                // Pixel is inside of the accumulator - check if it contains DUMMY
+                if (acc.at<Dtype>(yp, xp) == DUMMY)
+                {
+                    // Change its value to the actual value - coordinate relative to the current pixel position
+                    // The coordinates are converted to approximately [0,1], i.e. the ideal bounding box has
+                    // coordinates [0,0], [1,1], but the actual bounding boxes will differ in both dimensions
+                    if (channel == 1 || channel == 3)
+                    {
+                        // xmin, xmax
+                        acc.at<Dtype>(yp, xp) = Dtype(0.5f + (value-x - j*this->_scale) / this->_ideal_size);
+                    }
+                    else if (channel == 2 || channel == 4)
+                    {
+                        // ymin, ymax
+                        acc.at<Dtype>(yp, xp) = Dtype(0.5f + (value-y - i*this->_scale) / this->_ideal_size);
+                    }
+                }
+            }
         }
     }
 }

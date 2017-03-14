@@ -78,6 +78,17 @@ protected:
      */
     virtual void _applyDiffWeights ();
 
+    /**
+     * @brief Renders a circle with coordinates (xmin, ymin, xmax or ymax)
+     * It has to be rendered specifically because there is a different value in each pixel of the accumulator
+     * @param acc Accumulator of the coordinate to be rendered
+     * @param x Coordinate of the center in the original image coordinates (not scaled)
+     * @param y Coordinate of the center in the original image coordinates (not scaled)
+     * @param value Not scaled coordinate to be rendered
+     * @param channel 1, 2, 3 or 4 - determined which coordinate is being rendered
+     */
+    virtual void _renderCoordinateCircle (cv::Mat &acc, int x, int y, Dtype value, int channel);
+
 
     // ---------------------------------------  PROTECTED MEMBERS  --------------------------------------- //
     // Hough map - accumulator of object centers (shape of the blob is the same as bottom[0])
