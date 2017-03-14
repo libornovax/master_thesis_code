@@ -288,13 +288,14 @@ void BBTXTLossLayer<Dtype>::_renderCoordinateCircle (cv::Mat &acc, int x, int y,
     // The circles in the accumulators with the coordinates have to be rendered separately because the value
     // of each pixel differs based on the pixel position inside of the bounding box
 
-    const Dtype DUMMY          = 9999.0f;
-    const int radius           = this->layer_param_.accumulator_loss_param().radius();
-    const double scaling_ratio = 1.0 / this->_scale;
+    const Dtype DUMMY = 9999.0f;
+    const int radius  = this->layer_param_.accumulator_loss_param().radius();
+    const int x_acc   = x / this->_scale;
+    const int y_acc   = y / this->_scale;
 
     // Because I don't want to take care of the plotting of the circle myself, I use the OpenCV function and
     // then replace the values - first create a circle with a dummy value
-    cv::circle(acc, cv::Point(scaling_ratio*x, scaling_ratio*y), radius, cv::Scalar(DUMMY), -1);
+    cv::circle(acc, cv::Point(x_acc, y_acc), radius, cv::Scalar(DUMMY), -1);
 
     // Now go through the pixels in the circle's bounding box and if there is the DUMMY value compute
     // the real value
@@ -302,8 +303,8 @@ void BBTXTLossLayer<Dtype>::_renderCoordinateCircle (cv::Mat &acc, int x, int y,
     {
         for (int j = -radius; j <= radius; ++j)
         {
-            int xp = scaling_ratio*x + j;
-            int yp = scaling_ratio*y + i;
+            int xp = x_acc + j;
+            int yp = y_acc + i;
 
             if (xp >= 0 && xp < acc.cols && yp >= 0 && yp < acc.rows)
             {
