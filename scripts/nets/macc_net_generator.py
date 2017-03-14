@@ -358,7 +358,7 @@ class MACCNetGenerator(object):
 					'  }\n')
 
 		out += ('  convolution_param {\n' \
-				'    num_output: 1\n' \
+				'    num_output: 5\n' \
 				'    kernel_size: 1\n')
 
 		if not deploy:
@@ -402,7 +402,7 @@ class MACCNetGenerator(object):
 		out  = ('\n# ' + '-'*45 + ' LOSS ' + '-'*45 + ' #\n'
 				'layer {\n' \
 				'  name: "loss"\n' \
-				'  type: "MultiscaleAccumulatorLoss"\n' \
+				'  type: "BBTXTLoss"\n' \
 				'  bottom: "label"\n')
 
 		for acc in self.accs:
