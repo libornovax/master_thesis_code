@@ -69,7 +69,7 @@ void runPyramidDetection (const std::string &path_prototxt, const std::string &p
     CHECK_EQ(input_layer->shape(1), 3) << "Input layer must have 3 channels.";
     for (const auto output_layer: net->output_blobs())
     {
-        CHECK_EQ(output_layer->shape(1), 1) << "Output layer must have one channel";
+        CHECK_EQ(output_layer->shape(1), 5) << "Output layer must have 5 channels";
     }
 
     // Prepare the input channels
@@ -114,25 +114,44 @@ void runPyramidDetection (const std::string &path_prototxt, const std::string &p
 
 
             // Show the result
-            caffe::Blob<float>* output_layer = net->output_blobs()[0];
-            cv::Mat accumulator(output_layer->shape(2), output_layer->shape(3), CV_32FC1,
-                                output_layer->mutable_cpu_data());
+            caffe::Blob<float>* output = net->output_blobs()[0];
+            float *data_output = output->mutable_cpu_data();
+            cv::Mat acc_prob(output->shape(2), output->shape(3), CV_32FC1, data_output+output->offset(0, 0));
+            cv::Mat acc_xmin(output->shape(2), output->shape(3), CV_32FC1, data_output+output->offset(0, 1));
+            cv::Mat acc_ymin(output->shape(2), output->shape(3), CV_32FC1, data_output+output->offset(0, 2));
+            cv::Mat acc_xmax(output->shape(2), output->shape(3), CV_32FC1, data_output+output->offset(0, 3));
+            cv::Mat acc_ymax(output->shape(2), output->shape(3), CV_32FC1, data_output+output->offset(0, 4));
 
             double mx;
-            cv::minMaxLoc(accumulator, 0, &mx);
+            cv::minMaxLoc(acc_prob, 0, &mx);
             std::cout << mx << std::endl;
 
-            cv::imshow("Accumulator " + net->blob_names()[net->output_blob_indices()[0]] + " (" + std::to_string(s) + ")", accumulator);
+            cv::imshow("Accumulator " + net->blob_names()[net->output_blob_indices()[0]] + " (" + std::to_string(s) + ")", acc_prob);
 
             // Draw detected boxes
-            for (int i = 0; i < accumulator.rows; ++i)
+            for (int i = 0; i < acc_prob.rows; ++i)
             {
-                for (int j = 0; j < accumulator.cols; ++j)
+                for (int j = 0; j < acc_prob.cols; ++j)
                 {
-                    float conf = accumulator.at<float>(i,j);
-                    if (conf > 0.7)
+                    float conf = acc_prob.at<float>(i, j);
+                    if (conf >= 0.7)
                     {
-                        cv::rectangle(image, cv::Rect(4*j/s-40/s, 4*i/s-40/s, 80/s, 80/s), cv::Scalar(0,0,255));
+                        int xmin = (4*j + (80*(acc_xmin.at<float>(i, j) - 0.5))) / s;
+                        int ymin = (4*i + (80*(acc_ymin.at<float>(i, j) - 0.5))) / s;
+                        int xmax = (4*j + (80*(acc_xmax.at<float>(i, j) - 0.5))) / s;
+                        int ymax = (4*i + (80*(acc_ymax.at<float>(i, j) - 0.5))) / s;
+
+                        std::cout << acc_xmin.at<float>(i, j) << " " << acc_ymin.at<float>(i, j) << " " << acc_xmax.at<float>(i, j) << " " << acc_ymax.at<float>(i, j) << std::endl;
+
+                        if (xmin >= xmax || ymin >= ymax)
+                        {
+                            // This does not make sense
+                            std::cout << "WARNING: Coordinates do not make sense! [" << xmin << "," << ymin << "," << xmax << "," << ymax << "]" << std::endl;
+                            continue;
+                        }
+
+                        cv::rectangle(image, cv::Rect(xmin, ymin, xmax-xmin, ymax-ymin), cv::Scalar(0,0,255));
+                        cv::circle(image, cv::Point(4*j/s, 4*i/s), 2, cv::Scalar(0,255,0), -1);
                     }
                 }
             }

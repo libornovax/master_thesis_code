@@ -11,7 +11,6 @@ conv k3  d2  o128
 pool
 conv k3      o256
 conv k3  d2  o256
-macc x2
 macc x4
 
 ----------------------------------------------------------------------------------------------------
@@ -192,21 +191,6 @@ class MACCNetGenerator(object):
 				'}\n')
 
 
-	def _layer_sigmoid(self, bound_name):
-		"""
-		Creates description of a ReLU layer.
-
-		Input:
-			bound_name: The name of the layer to which the sigmoid should be bound
-		"""
-		return ('layer {\n' \
-				'  name: "sigmoid_' + bound_name + '"\n' \
-				'  type: "Sigmoid"\n' \
-				'  bottom: "' + bound_name + '"\n' \
-				'  top: "' + bound_name + '"\n' \
-				'}\n')
-
-
 	def _layer_conv(self, specs, deploy=False):
 		"""
 		Creates a description of a convolutional layer.
@@ -372,11 +356,6 @@ class MACCNetGenerator(object):
 
 		out += ('  }\n' \
 				'}\n')
-
-		# Since the loss computation contains sigmoid function we now have to append it in deploy 
-		# for the testing part
-		if deploy:
-			out += self._layer_sigmoid(name)
 
 		# List of accumulators - for the loss layer
 		self.accs.append(name)
