@@ -131,6 +131,7 @@ class LearningCurvePlotter(object):
 		plt.legend()
 
 		plt.savefig(path_out + '.pdf')
+		plt.savefig(path_out + '.png')
 
 		# Save the values to a CSV file
 		with open(path_out + '.csv', 'w') as outfile:
