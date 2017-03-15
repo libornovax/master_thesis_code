@@ -250,32 +250,57 @@ void BBTXTLossLayer<Dtype>::_applyDiffWeights ()
     // the gradient
 
     const int count_channel = this->_accumulator->shape(2) * this->_accumulator->shape(3);
+    const float nr          = this->layer_param().accumulator_loss_param().negative_ratio();
+    const Dtype HN_THRESH   = 0.5f;
 
-    // Compute the number of positive pixels in the probability accumulator
-    float pn = 0.0f;
+    // For each probability accumulator in the batch apply the diff weight
     for (int b = 0; b < this->_accumulator->shape(0); ++b)
     {
-        const Dtype* data_acc_prob = this->_accumulator->cpu_data() + this->_accumulator->offset(b, 0);
-        pn += caffe_cpu_asum(count_channel, data_acc_prob);
-    }
-    pn /= this->_accumulator->shape(0);  // Per image
-    // Now determine the weight of positive pixels from the required ratio
-    const float nr = this->layer_param().accumulator_loss_param().negative_ratio();
-    const float pos_diff_weight = (count_channel-pn) / nr / pn;
+        const Dtype* data_acc_prob  = this->_accumulator->cpu_data() + this->_accumulator->offset(b, 0);
+        const Dtype *data_diff_prob = this->_diff->cpu_data() + this->_diff->offset(b, 0);
+        Dtype *data_diff_prob_m     = this->_diff->mutable_cpu_data() + this->_diff->offset(b, 0);
 
-    for (int b = 0; b < this->_accumulator->shape(0); ++b)
-    {
-        const Dtype* data_acc_prob = this->_accumulator->cpu_data() + this->_accumulator->offset(b, 0);
-        Dtype *data_diff_prob      = this->_diff->mutable_cpu_data() + this->_diff->offset(b, 0);
+        // Number of positive pixels (samples) in this accumulator
+        const float pn = caffe_cpu_asum(count_channel, data_acc_prob);
+        const float nn = count_channel - pn;
+
+        // Compute the number of hard negative pixels (samples)
+        float hnn = 0.0f;
+        for (int i = 0; i < count_channel; ++i)
+        {
+            if (*data_diff_prob > HN_THRESH) hnn++;  // This is a hard negative
+            data_diff_prob++;
+        }
+        std::cout << "pn, hnn: " << pn << ", " << hnn << std::endl;
+
+        // Now determine the weight of positive pixels from the required ratio
+        const float pos_diff_weight = nn / pn / nr;
+        // The weight of negative pixels is adjusted so that hard negatives have the same weigth sum as
+        // the other samples' diffs
+        const float neg_diff_weight  = (hnn == 0) ? 1.0f : (nn / (nn-hnn) / 2.0f);
+        const float hneg_diff_weight = (hnn == 0) ? 1.0f : (nn / hnn / 2.0f);
+
+        std::cout << pos_diff_weight << " " << neg_diff_weight << " " << hneg_diff_weight << std::endl;
 
         for (int i = 0; i < count_channel; ++i)
         {
             if (*data_acc_prob > Dtype(0.0f))
             {
-                *data_diff_prob *= pos_diff_weight;
+                // Positive sample
+                *data_diff_prob_m *= pos_diff_weight;
+            }
+            else if (*data_diff_prob_m > HN_THRESH)
+            {
+                // Hard negative sample
+                *data_diff_prob_m *= hneg_diff_weight;
+            }
+            else
+            {
+                // Other negative samples
+                *data_diff_prob_m *= neg_diff_weight;
             }
 
-            data_diff_prob++;
+            data_diff_prob_m++;
             data_acc_prob++;
         }
     }
