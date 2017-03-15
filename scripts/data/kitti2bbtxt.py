@@ -249,6 +249,11 @@ def translate_file(path_labels, path_images, difficulty, outfile, filter, label)
 				if compute_hw_ratio(xmin, ymin, xmax, ymax) > filter:
 					continue
 
+				# The size of an image in KITTI is 1250x375. If the bounding box is significantly
+				# larger, discard it - probably just some large distortion from camera
+				if ymax-ymin > 700 or xmax-xmin > 1500:
+					continue
+
 				line_out = path_image + ' '
 				line_out += str(LABELS[data[0]]) + ' '
 				# For confidence we put one - just to have something
