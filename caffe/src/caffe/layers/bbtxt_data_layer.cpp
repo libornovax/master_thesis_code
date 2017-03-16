@@ -123,6 +123,8 @@ template <typename Dtype>
 void BBTXTDataLayer<Dtype>::load_batch (Batch<Dtype> *batch)
 {
     // This function is called on a prefetch thread
+    CPUTimer timer;
+    timer.Start();
 
     CHECK(batch->data_.count());
     CHECK(this->transformed_data_.count());
@@ -178,6 +180,8 @@ void BBTXTDataLayer<Dtype>::load_batch (Batch<Dtype> *batch)
             this->_i_global = 0;
         }
     }
+
+    std::cout << "Time to read data: " << timer.MilliSeconds() << " ms" << std::endl;
 }
 
 

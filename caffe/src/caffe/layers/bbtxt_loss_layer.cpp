@@ -10,6 +10,7 @@
 #include "caffe/internal_threadpool.hpp"
 #include "caffe/util/blocking_queue.hpp"
 #include "caffe/util/blocking_counter.hpp"
+#include "caffe/util/benchmark.hpp"
 
 
 namespace caffe {
@@ -84,11 +85,14 @@ void BBTXTLossLayer<Dtype>::Forward_cpu (const vector<Blob<Dtype>*> &bottom, con
     this->_bottom = bottom[1]; this->_bottom->cpu_data();
 
     // -- COMPUTE THE LOSS -- //
+    CPUTimer timer;
+    timer.Start();
     // Go through all images on the output and for each of them create accumulators and compute loss
     for (int b = 0; b < this->_labels->shape(0); ++b) this->_b_queue.push(b);
     // Wait for the threadpool to finish processing the images
     this->_num_processed.waitToCount(batch_size);
 
+    std::cout << "Time to build accumulators and compute loss: " << timer.MilliSeconds() << " ms" << std::endl;
 
     // Loss per pixel
     Dtype loss = (this->_loss_prob/batch_size + this->_loss_coord/batch_size) / Dtype(2.0f);
