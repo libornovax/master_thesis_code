@@ -7,13 +7,16 @@
 #define CAFFE_BBTXT_LOSS_LAYER_HPP_
 
 #include <vector>
+#include <atomic>
 
 #include "caffe/blob.hpp"
 #include "caffe/layer.hpp"
 #include "caffe/proto/caffe.pb.h"
 
 #include "caffe/layers/loss_layer.hpp"
-#include "caffe/layers/sigmoid_layer.hpp"
+#include "caffe/internal_threadpool.hpp"
+#include "caffe/util/blocking_queue.hpp"
+#include "caffe/util/blocking_counter.hpp"
 
 
 namespace caffe {
@@ -27,11 +30,12 @@ namespace caffe {
  * accumulator has to have its own bbtxt loss layer
  */
 template <typename Dtype>
-class BBTXTLossLayer : public LossLayer<Dtype>
+class BBTXTLossLayer : public LossLayer<Dtype>, public InternalThreadpool
 {
 public:
 
     explicit BBTXTLossLayer (const LayerParameter &param);
+    virtual ~BBTXTLossLayer ();
 
     virtual void LayerSetUp (const vector<Blob<Dtype>*> &bottom, const vector<Blob<Dtype>*> &top) override;
 
@@ -56,6 +60,8 @@ protected:
 //    virtual void Backward_gpu (const vector<Blob<Dtype>*> &top, const vector<bool> &propagate_down,
 //                               const vector<Blob<Dtype>*> &bottom) override;
 
+    virtual void InternalThreadEntry (int t) override;
+
     /**
      * @brief Computes the bounds of bounding box sizes for the accumulator
      */
@@ -63,20 +69,22 @@ protected:
 
     /**
      * @brief Builds the accumulators from the given labels
-     * @param labels Blob with the labels of shape batch x num_bbs x 5
+     * @param b Id of image in the batch
      */
-    virtual void _buildAccumulator (const Blob<Dtype> *labels);
+    virtual void _buildAccumulator (int b);
 
     /**
      * @brief Removes diffs of coordinates of negative samples - we do not want to include them in the loss
+     * @param b Id of image in the batch
      * @return Number of removed coordinates
      */
-    virtual int _removeNegativeCoordinateDiff ();
+    virtual int _removeNegativeCoordinateDiff (int b);
 
     /**
      * @brief Weights the diffs in order to even out the impact of positive and negative samples on the gradient
+     * @param b Id of image in the batch
      */
-    virtual void _applyDiffWeights ();
+    virtual void _applyDiffWeights (int b);
 
     /**
      * @brief Renders a circle with coordinates (xmin, ymin, xmax or ymax)
@@ -100,7 +108,19 @@ protected:
     std::pair<float,float> _bb_bounds;
     float _ideal_size;
 
+    // Blob with the labels of shape batch x num_bbs x 5
+    const Blob<Dtype>* _labels;
+    const Blob<Dtype>* _bottom;
+
     std::shared_ptr<Blob<Dtype>> _diff;
+
+    // Queue of indices of images to be processed
+    BlockingQueue<int> _b_queue;
+    BlockingCounter _num_processed;
+
+    std::atomic<Dtype> _loss_prob;
+    std::atomic<Dtype> _loss_coord;
+
 };
 
 

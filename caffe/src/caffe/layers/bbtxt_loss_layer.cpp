@@ -1,4 +1,5 @@
 #include <vector>
+#include <boost/thread.hpp>
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
@@ -6,19 +7,31 @@
 #include "caffe/layers/bbtxt_loss_layer.hpp"
 #include "caffe/util/math_functions.hpp"
 #include "caffe/util/rng.hpp"
+#include "caffe/internal_threadpool.hpp"
+#include "caffe/util/blocking_queue.hpp"
+#include "caffe/util/blocking_counter.hpp"
 
 
 namespace caffe {
 
 
 template <typename Dtype>
-BBTXTLossLayer<Dtype>::BBTXTLossLayer(const LayerParameter &param)
-    : LossLayer<Dtype>(param)
+BBTXTLossLayer<Dtype>::BBTXTLossLayer (const LayerParameter &param)
+    : LossLayer<Dtype>(param),
+      InternalThreadpool(std::max(int(boost::thread::hardware_concurrency()/2), 1)),
+      _b_queue()
 {
     CHECK(param.has_accumulator_loss_param()) << "AccumulatorLossParameter is mandatory!";
     CHECK(param.accumulator_loss_param().has_radius()) << "Radius is mandatory!";
     CHECK(param.accumulator_loss_param().has_circle_ratio()) << "Circle ratio is mandatory!";
     CHECK(param.accumulator_loss_param().has_downsampling()) << "Downsampling is mandatory!";
+}
+
+
+template <typename Dtype>
+BBTXTLossLayer<Dtype>::~BBTXTLossLayer ()
+{
+    StopInternalThreadpool();
 }
 
 
@@ -36,6 +49,8 @@ void BBTXTLossLayer<Dtype>::LayerSetUp (const vector<Blob<Dtype>*> &bottom, cons
     this->_scale = this->layer_param_.accumulator_loss_param().downsampling();
     // Compute the bounds for bounding boxes, which should be included in this accumulator
     this->_computeSizeBounds();
+
+    this->StartInternalThreadpool();
 }
 
 
@@ -56,38 +71,29 @@ void BBTXTLossLayer<Dtype>::Reshape (const vector<Blob<Dtype>*> &bottom, const v
 template <typename Dtype>
 void BBTXTLossLayer<Dtype>::Forward_cpu (const vector<Blob<Dtype>*> &bottom, const vector<Blob<Dtype>*> &top)
 {
-    // Create the accumulators from the labels
-    this->_buildAccumulator(bottom[0]);
+    const int batch_size = bottom[1]->shape(0);
 
-    const int count         = bottom[1]->count();
-    const int count_channel = bottom[1]->shape(2) * bottom[1]->shape(3);
-    const int batch_size    = bottom[1]->shape(0);
+    this->_loss_prob  = Dtype(0.0f);
+    this->_loss_coord = Dtype(0.0f);
 
-    // Compute the difference of the target accumulator and the estimated one
-    caffe_sub(count, bottom[1]->cpu_data(), this->_accumulator->cpu_data(), this->_diff->mutable_cpu_data());
+    this->_num_processed.reset();
 
-    // We do not want to include errors on coordinates from samples (pixels), which are not supposed to
-    // predict them - we need to remove the computed difference from the loss computation
-    const int num_removed_coords = this->_removeNegativeCoordinateDiff();
+    // We have to store the labels and net output in internal members because we will be accessing them in
+    // threads
+    this->_labels = bottom[0]; this->_labels->cpu_data();
+    this->_bottom = bottom[1]; this->_bottom->cpu_data();
 
-    Dtype loss_prob  = Dtype(0.0f);
-    Dtype loss_coord = Dtype(0.0f);
-    for (int b = 0; b < batch_size; ++b)
-    {
-        // Loss from the probability accumulator (channel 0)
-        const Dtype *data_prob = this->_diff->cpu_data() + this->_diff->offset(b, 0);
-        loss_prob += caffe_cpu_dot(count_channel, data_prob, data_prob);
+    // -- COMPUTE THE LOSS -- //
+    // Go through all images on the output and for each of them create accumulators and compute loss
+    for (int b = 0; b < this->_labels->shape(0); ++b) this->_b_queue.push(b);
+    // Wait for the threadpool to finish processing the images
+    this->_num_processed.waitToCount(batch_size);
 
-        // Loss from the coordinates (channels 1-4)
-        const Dtype *data_coord = this->_diff->cpu_data() + this->_diff->offset(b, 1);
-        loss_coord += caffe_cpu_dot(4*count_channel, data_coord, data_coord);
-    }
 
     // Loss per pixel
-    Dtype loss = (loss_prob / (batch_size*count_channel)
-                + loss_coord / (4*batch_size*count_channel - num_removed_coords)) / Dtype(2.0f);
+    Dtype loss = (this->_loss_prob/batch_size + this->_loss_coord/batch_size) / Dtype(2.0f);
 
-    std::cout << "loss_prob: " << (loss_prob / (batch_size*count_channel)) << ", loss_coord: " << (loss_coord / (4*batch_size*count_channel - num_removed_coords)) << std::endl;
+    std::cout << "loss_prob: " << (this->_loss_prob / batch_size) << ", loss_coord: " << (this->_loss_coord / batch_size) << std::endl;
 
     top[0]->mutable_cpu_data()[0] = loss;
 }
@@ -101,10 +107,6 @@ void BBTXTLossLayer<Dtype>::Backward_cpu (const vector<Blob<Dtype>*> &top,
     // Fill in the diff (gradient) for each output blob
     if (propagate_down[1])
     {
-        // Apply weight on the diffs to compensate for the smaller amount of positive pixels in
-        // the target accumulator
-        this->_applyDiffWeights();
-
         // Scale the gradient - they scale it everywhere with batch size (bottom[i]->shape(0)), I don't know
         // why but lets do it as well
         const Dtype alpha = top[0]->cpu_diff()[0] / bottom[1]->shape(0);
@@ -113,6 +115,68 @@ void BBTXTLossLayer<Dtype>::Backward_cpu (const vector<Blob<Dtype>*> &top,
     }
 }
 
+
+template <typename Dtype>
+void BBTXTLossLayer<Dtype>::InternalThreadEntry (int t)
+{
+    // This method runs on each thread of the internal threadpool
+    // We build accumulator, remove negative cooordinate diff and apply diff weights for each image in
+    // the batch
+    std::cout << "============================= STARTING THREAD " << t << std::endl;
+
+    try {
+        while (!this->must_stop(t))
+        {
+            int b = this->_b_queue.pop();
+
+            // Process this image
+            this->_buildAccumulator(b);
+
+            const int batch_size    = this->_bottom->shape(0);
+            const int count         = this->_bottom->count() / batch_size;
+            const int count_channel = this->_bottom->shape(2) * this->_bottom->shape(3);
+
+            // Compute the difference of the target accumulator and the estimated one
+            caffe_sub(count, this->_bottom->cpu_data() + this->_bottom->offset(b),
+                             this->_accumulator->cpu_data() + this->_accumulator->offset(b),
+                             this->_diff->mutable_cpu_data() + this->_diff->offset(b));
+
+            // We do not want to include errors on coordinates from samples (pixels), which are not supposed
+            // to predict them - we need to remove the computed difference from the loss computation
+            const int num_removed_coords = this->_removeNegativeCoordinateDiff(b);
+
+
+            // Loss from the probability accumulator (channel 0)
+            const Dtype *data_prob = this->_diff->cpu_data() + this->_diff->offset(b, 0);
+            Dtype loss_prob = caffe_cpu_dot(count_channel, data_prob, data_prob);
+            // Loss from the coordinates (channels 1-4)
+            const Dtype *data_coord = this->_diff->cpu_data() + this->_diff->offset(b, 1);
+            Dtype loss_coord = caffe_cpu_dot(4*count_channel, data_coord, data_coord);
+
+            // Loss per pixel
+            this->_loss_prob  = this->_loss_prob  + loss_prob  / count_channel;
+            this->_loss_coord = this->_loss_coord + loss_coord / (4*count_channel - num_removed_coords);
+
+
+            // In the training pass we also have to adjust the diffs (for testing we do not need this)
+            if (this->phase_ == TRAIN)
+            {
+                // Apply weight on the diffs to compensate for the smaller amount of positive pixels in
+                // the target accumulator
+                this->_applyDiffWeights(b);
+            }
+
+
+            // Raise the counter on processed images
+            this->_num_processed.increase();
+
+        }
+    } catch (boost::thread_interrupted&) {
+        // Interrupted exception is expected on shutdown
+    }
+
+    std::cout << "============================= KILLING THREAD " << t << std::endl;
+}
 
 
 // -----------------------------------------  PROTECTED METHODS  ----------------------------------------- //
@@ -150,7 +214,7 @@ void BBTXTLossLayer<Dtype>::_computeSizeBounds ()
 
 
 template <typename Dtype>
-void BBTXTLossLayer<Dtype>::_buildAccumulator (const Blob<Dtype> *labels)
+void BBTXTLossLayer<Dtype>::_buildAccumulator (int b)
 {
     // This is because of the cv::Mat type - I don't want to program other types now except CV_32FC1
     CHECK((std::is_same<Dtype,float>::value)) << "BBTXTLossLayer supports only float!";
@@ -165,44 +229,41 @@ void BBTXTLossLayer<Dtype>::_buildAccumulator (const Blob<Dtype> *labels)
 
     const double scaling_ratio = 1.0 / this->_scale;
 
-    // Go through all images on the output and for each of them create accumulators
-    for (int b = 0; b < labels->shape(0); ++b)
+
+    // The channels of the accumulator go like this: probability, xmin, ymin, xmax, ymax
+    for (int c = 0; c < 5; ++c)
     {
-        // The channels of the accumulator go like this: probability, xmin, ymin, xmax, ymax
-        for (int c = 0; c < 5; ++c)
+        // Create a cv::Mat wrapper for the accumulator - this way we can now use OpenCV drawing functions
+        // to create circles in the accumulator
+        cv::Mat acc(height, width, CV_32FC1, accumulator_data + this->_accumulator->offset(b, c));
+        acc.setTo(cv::Scalar(0));
+
+        // Draw circles in the center of the bounding boxes
+        for (int i = 0; i < this->_labels->shape(1); ++i)
         {
-            // Create a cv::Mat wrapper for the accumulator - this way we can now use OpenCV drawing functions
-            // to create circles in the accumulator
-            cv::Mat acc(height, width, CV_32FC1, accumulator_data + this->_accumulator->offset(b, c));
-            acc.setTo(cv::Scalar(0));
+            // Data are stored like this [label, xmin, ymin, xmax, ymax]
+            const Dtype *data = this->_labels->cpu_data() + this->_labels->offset(b, i);
 
-            // Draw circles in the center of the bounding boxes
-            for (int i = 0; i < labels->shape(1); ++i)
+            // If the label is -1, there are no more bounding boxes
+            if (data[0] == Dtype(-1.0f)) break;
+
+            // Check if the size of the bounding box fits within the bounds of this accumulator - the
+            // largest dimension of the bounding box has to by within the bounds
+            Dtype largest_dim = std::max(data[3]-data[1], data[4]-data[2]);
+            if (largest_dim >= this->_bb_bounds.first && largest_dim <= this->_bb_bounds.second)
             {
-                // Data are stored like this [label, xmin, ymin, xmax, ymax]
-                const Dtype *data = labels->cpu_data() + labels->offset(b, i);
+                const int x = (data[1]+data[3]) / 2;
+                const int y = (data[2]+data[4]) / 2;
 
-                // If the label is -1, there are no more bounding boxes
-                if (data[0] == Dtype(-1.0f)) break;
-
-                // Check if the size of the bounding box fits within the bounds of this accumulator - the
-                // largest dimension of the bounding box has to by within the bounds
-                Dtype largest_dim = std::max(data[3]-data[1], data[4]-data[2]);
-                if (largest_dim >= this->_bb_bounds.first && largest_dim <= this->_bb_bounds.second)
+                // Either 1 for probability or coordinates relative to the object centroid
+                if (c == 0)
                 {
-                    const int x = (data[1]+data[3]) / 2;
-                    const int y = (data[2]+data[4]) / 2;
-
-                    // Either 1 for probability or coordinates relative to the object centroid
-                    if (c == 0)
-                    {
-                        cv::circle(acc, cv::Point(scaling_ratio*x,
-                                                  scaling_ratio*y), radius, cv::Scalar(Dtype(1.0f)), -1);
-                    }
-                    else
-                    {
-                        this->_renderCoordinateCircle(acc, x, y, data[c], c);
-                    }
+                    cv::circle(acc, cv::Point(scaling_ratio*x,
+                                              scaling_ratio*y), radius, cv::Scalar(Dtype(1.0f)), -1);
+                }
+                else
+                {
+                    this->_renderCoordinateCircle(acc, x, y, data[c], c);
                 }
             }
         }
@@ -211,31 +272,28 @@ void BBTXTLossLayer<Dtype>::_buildAccumulator (const Blob<Dtype> *labels)
 
 
 template <typename Dtype>
-int BBTXTLossLayer<Dtype>::_removeNegativeCoordinateDiff ()
+int BBTXTLossLayer<Dtype>::_removeNegativeCoordinateDiff (int b)
 {
     int num_removed = 0;
 
-    for (int b = 0; b < this->_accumulator->shape(0); ++b)
+    // The channels of the accumulator go like this: probability, xmin, ymin, xmax, ymax - we want to
+    // nullify the diffs of the coordinates, thus indices 1 to 4
+    for (int c = 1; c < 5; ++c)
     {
-        // The channels of the accumulator go like this: probability, xmin, ymin, xmax, ymax - we want to
-        // nullify the diffs of the coordinates, thus indices 1 to 4
-        for (int c = 1; c < 5; ++c)
+        const Dtype *data_acc_prob = this->_accumulator->cpu_data() + this->_accumulator->offset(b, 0);
+        Dtype *data_diff_coord     = this->_diff->mutable_cpu_data() + this->_diff->offset(b, c);
+
+        for (int i = 0; i < this->_accumulator->shape(2)*this->_accumulator->shape(3); ++i)
         {
-            const Dtype *data_acc_prob = this->_accumulator->cpu_data() + this->_accumulator->offset(b, 0);
-            Dtype *data_diff_coord     = this->_diff->mutable_cpu_data() + this->_diff->offset(b, c);
-
-            for (int i = 0; i < this->_accumulator->shape(2)*this->_accumulator->shape(3); ++i)
+            // This is a negative sample - nullify coordinate diff
+            if (*data_acc_prob == Dtype(0.0f))
             {
-                // This is a negative sample - nullify coordinate diff
-                if (*data_acc_prob == Dtype(0.0f))
-                {
-                    *data_diff_coord = Dtype(0.0f);
-                    num_removed++;
-                }
-
-                data_acc_prob++;
-                data_diff_coord++;
+                *data_diff_coord = Dtype(0.0f);
+                num_removed++;
             }
+
+            data_acc_prob++;
+            data_diff_coord++;
         }
     }
 
@@ -244,7 +302,7 @@ int BBTXTLossLayer<Dtype>::_removeNegativeCoordinateDiff ()
 
 
 template <typename Dtype>
-void BBTXTLossLayer<Dtype>::_applyDiffWeights ()
+void BBTXTLossLayer<Dtype>::_applyDiffWeights (int b)
 {
     // Applies weights on the diffs in order to even the impact of the positive and negative samples on
     // the gradient
@@ -253,57 +311,54 @@ void BBTXTLossLayer<Dtype>::_applyDiffWeights ()
     const float nr          = this->layer_param().accumulator_loss_param().negative_ratio();
 //    const Dtype HN_THRESH   = 0.25f;
 
-    // For each probability accumulator in the batch apply the diff weight
-    for (int b = 0; b < this->_accumulator->shape(0); ++b)
+
+    const Dtype* data_acc_prob  = this->_accumulator->cpu_data() + this->_accumulator->offset(b, 0);
+//    const Dtype *data_diff_prob = this->_diff->cpu_data() + this->_diff->offset(b, 0);
+    Dtype *data_diff_prob_m     = this->_diff->mutable_cpu_data() + this->_diff->offset(b, 0);
+
+    // Number of positive pixels (samples) in this accumulator
+    const float pn = caffe_cpu_asum(count_channel, data_acc_prob);
+    const float nn = count_channel - pn;
+
+    // Compute the number of hard negative pixels (samples)
+//    float hnn = 0.0f;
+//    for (int i = 0; i < count_channel; ++i)
+//    {
+//        // We do not have to check if this is a positive or negative sample because we will never have
+//        // a huge positive error on positive samples - the network learns to predict values in [0, 1],
+//        // therefore it can only overshoot a value for negative samples, which should be zero. The diff
+//        // is therefore positive
+//        if (*data_diff_prob > HN_THRESH) hnn++;  // This is a hard negative
+//        data_diff_prob++;
+//    }
+
+    // Now determine the weight of positive pixels from the required ratio
+    const float pos_diff_weight = nn / pn / nr;
+    // The weight of negative pixels is adjusted so that hard negatives have the same weigth sum as
+    // the other samples' diffs
+//    const float neg_diff_weight  = (hnn == 0) ? 1.0f : (nn / (nn-hnn) / 2.0f);
+//    const float hneg_diff_weight = (hnn == 0) ? 1.0f : (nn / hnn / 2.0f);
+
+    for (int i = 0; i < count_channel; ++i)
     {
-        const Dtype* data_acc_prob  = this->_accumulator->cpu_data() + this->_accumulator->offset(b, 0);
-//        const Dtype *data_diff_prob = this->_diff->cpu_data() + this->_diff->offset(b, 0);
-        Dtype *data_diff_prob_m     = this->_diff->mutable_cpu_data() + this->_diff->offset(b, 0);
-
-        // Number of positive pixels (samples) in this accumulator
-        const float pn = caffe_cpu_asum(count_channel, data_acc_prob);
-        const float nn = count_channel - pn;
-
-        // Compute the number of hard negative pixels (samples)
-//        float hnn = 0.0f;
-//        for (int i = 0; i < count_channel; ++i)
+        if (*data_acc_prob > Dtype(0.0f))
+        {
+            // Positive sample
+            *data_diff_prob_m *= pos_diff_weight;
+        }
+//        else if (*data_diff_prob_m > HN_THRESH)
 //        {
-//            // We do not have to check if this is a positive or negative sample because we will never have
-//            // a huge positive error on positive samples - the network learns to predict values in [0, 1],
-//            // therefore it can only overshoot a value for negative samples, which should be zero. The diff
-//            // is therefore positive
-//            if (*data_diff_prob > HN_THRESH) hnn++;  // This is a hard negative
-//            data_diff_prob++;
+//            // Hard negative sample
+//            *data_diff_prob_m *= hneg_diff_weight;
+//        }
+//        else
+//        {
+//            // Other negative samples
+//            *data_diff_prob_m *= neg_diff_weight;
 //        }
 
-        // Now determine the weight of positive pixels from the required ratio
-        const float pos_diff_weight = nn / pn / nr;
-        // The weight of negative pixels is adjusted so that hard negatives have the same weigth sum as
-        // the other samples' diffs
-//        const float neg_diff_weight  = (hnn == 0) ? 1.0f : (nn / (nn-hnn) / 2.0f);
-//        const float hneg_diff_weight = (hnn == 0) ? 1.0f : (nn / hnn / 2.0f);
-
-        for (int i = 0; i < count_channel; ++i)
-        {
-            if (*data_acc_prob > Dtype(0.0f))
-            {
-                // Positive sample
-                *data_diff_prob_m *= pos_diff_weight;
-            }
-//            else if (*data_diff_prob_m > HN_THRESH)
-//            {
-//                // Hard negative sample
-//                *data_diff_prob_m *= hneg_diff_weight;
-//            }
-//            else
-//            {
-//                // Other negative samples
-//                *data_diff_prob_m *= neg_diff_weight;
-//            }
-
-            data_diff_prob_m++;
-            data_acc_prob++;
-        }
+        data_diff_prob_m++;
+        data_acc_prob++;
     }
 }
 
