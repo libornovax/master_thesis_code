@@ -148,7 +148,6 @@ void BBTXTLossLayer<Dtype>::InternalThreadEntry (int t)
             // We do not want to include errors on coordinates from samples (pixels), which are not supposed
             // to predict them - we need to remove the computed difference from the loss computation
             int num_removed_coords = this->_removeNegativeCoordinateDiff(b);
-            if (num_removed_coords == 0) num_removed_coords = 1; // Division by zero and weird things happening
 
 
             // Loss from the probability accumulator (channel 0)
@@ -160,7 +159,10 @@ void BBTXTLossLayer<Dtype>::InternalThreadEntry (int t)
 
             // Loss per pixel
             this->_loss_prob  = this->_loss_prob  + loss_prob  / count_channel;
-            this->_loss_coord = this->_loss_coord + loss_coord / (4*count_channel - num_removed_coords);
+            if (num_removed_coords != 4*count_channel)
+            {
+                this->_loss_coord = this->_loss_coord + loss_coord / (4*count_channel - num_removed_coords);
+            }
 
 
             // In the training pass we also have to adjust the diffs (for testing we do not need this)
