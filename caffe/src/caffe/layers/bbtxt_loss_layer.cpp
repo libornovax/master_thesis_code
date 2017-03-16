@@ -141,13 +141,14 @@ void BBTXTLossLayer<Dtype>::InternalThreadEntry (int t)
             const int count_channel = this->_bottom->shape(2) * this->_bottom->shape(3);
 
             // Compute the difference of the target accumulator and the estimated one
-            caffe_sub(count, this->_bottom->cpu_data() + this->_bottom->offset(b),
-                             this->_accumulator->cpu_data() + this->_accumulator->offset(b),
-                             this->_diff->mutable_cpu_data() + this->_diff->offset(b));
+            caffe_sub(count, this->_bottom->cpu_data() + this->_bottom->offset(b, 0),
+                             this->_accumulator->cpu_data() + this->_accumulator->offset(b, 0),
+                             this->_diff->mutable_cpu_data() + this->_diff->offset(b, 0));
 
             // We do not want to include errors on coordinates from samples (pixels), which are not supposed
             // to predict them - we need to remove the computed difference from the loss computation
-            const int num_removed_coords = this->_removeNegativeCoordinateDiff(b);
+            int num_removed_coords = this->_removeNegativeCoordinateDiff(b);
+            if (num_removed_coords == 0) num_removed_coords = 1; // Division by zero and weird things happening
 
 
             // Loss from the probability accumulator (channel 0)
