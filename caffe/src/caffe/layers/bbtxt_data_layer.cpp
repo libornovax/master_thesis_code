@@ -126,8 +126,6 @@ template <typename Dtype>
 void BBTXTDataLayer<Dtype>::load_batch (Batch<Dtype> *batch)
 {
     // This function is called on a prefetch thread
-    CPUTimer timer;
-    timer.Start();
 
     CHECK(batch->data_.count());
     CHECK(this->transformed_data_.count());
@@ -140,10 +138,9 @@ void BBTXTDataLayer<Dtype>::load_batch (Batch<Dtype> *batch)
     this->transformed_data_.set_cpu_data(prefetch_data);
     this->transformed_label_.set_cpu_data(prefetch_label);
 
+    this->_num_processed.reset();
     for (int b = 0; b < batch_size; ++b) this->_b_queue.push(b);
     this->_num_processed.waitToCount(batch_size);
-
-    std::cout << "Time to read data: " << timer.MilliSeconds() << " ms" << std::endl;
 }
 
 
@@ -162,7 +159,6 @@ void BBTXTDataLayer<Dtype>::InternalThreadpoolEntry (int t)
             // Get index of image and bounding box we will crop
             SelectedBB<Dtype> selbb = this->_getImageAndBB(b);
 
-
             cv::Mat cv_img = cv::imread(selbb.filename, CV_LOAD_IMAGE_COLOR);
             CHECK(cv_img.data) << "Could not open " << selbb.filename;
 
@@ -176,7 +172,6 @@ void BBTXTDataLayer<Dtype>::InternalThreadpoolEntry (int t)
             // from each image, Testing - crop all bounding boxes from the image - this way we ensure
             // the test set is always the same)
             this->_cropAndTransform(cv_img, b, selbb.bb_id);
-
 
             // Raise the counter on processed images
             this->_num_processed.increase();
