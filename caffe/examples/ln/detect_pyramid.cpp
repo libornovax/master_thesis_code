@@ -1,8 +1,8 @@
 //
 // Libor Novak
-// 02/23/2017
+// 03/12/2017
 //
-// Generates and shows Hough maps (accumulators)
+// Detects objects by using a single scale detector on an image pyramid
 //
 
 #include <caffe/caffe.hpp>
@@ -47,30 +47,16 @@ void wrapInputLayer (caffe::Blob<float>* input_layer, std::vector<cv::Mat> &out_
 }
 
 
-void saveImageAndAccumulator (const cv::Mat &image, const cv::Mat &acc_large, int i)
-{
-    cv::Mat canvas(image.rows, 2*image.cols, CV_8UC3);
-
-    image.copyTo(canvas(cv::Rect(0, 0, image.cols, image.rows)));
-
-    cv::Mat acc_large_bgr = acc_large * 255.0f;
-    acc_large_bgr.convertTo(acc_large_bgr, CV_8UC1);
-    cv::cvtColor(acc_large_bgr, acc_large_bgr, CV_GRAY2BGR);
-
-    acc_large_bgr.copyTo(canvas(cv::Rect(image.cols, 0, image.cols, image.rows)));
-
-    cv::imwrite("acc" + std::to_string(i) + ".png", canvas);
-}
-
-
 void runPyramidDetection (const std::string &path_prototxt, const std::string &path_caffemodel,
-                              const std::string &path_image_list)
+                          const std::string &path_image_list)
 {
 #ifdef CPU_ONLY
     caffe::Caffe::set_mode(caffe::Caffe::CPU);
 #else
     caffe::Caffe::set_mode(caffe::Caffe::GPU);
 #endif
+
+    const std::vector<double> scales = {2.25, 1.5, 1.0, 0.66, 0.44, 0.29};
 
     // Create network and load trained weights from caffemodel file
     auto net = std::make_shared<caffe::Net<float>>(path_prototxt, caffe::TEST);
@@ -83,7 +69,7 @@ void runPyramidDetection (const std::string &path_prototxt, const std::string &p
     CHECK_EQ(input_layer->shape(1), 3) << "Input layer must have 3 channels.";
     for (const auto output_layer: net->output_blobs())
     {
-        CHECK_EQ(output_layer->shape(1), 1) << "Output layer must have one channel";
+        CHECK_EQ(output_layer->shape(1), 5) << "Output layer must have 5 channels";
     }
 
     // Prepare the input channels
@@ -106,48 +92,69 @@ void runPyramidDetection (const std::string &path_prototxt, const std::string &p
         imagef -= cv::Scalar(128.0f, 128.0f, 128.0f);
         imagef *= 1.0f/128.0f;
 
-        if (imagef.rows != input_layer->shape(2) || imagef.cols != input_layer->shape(3))
+        // Build the image pyramid and run detection on each scale of the pyramid
+        for (double s: scales)
         {
-            // The image has different dimensions than the net currently has -> we need to reshape it
-            input_layer->Reshape(1, input_layer->shape(1), imagef.rows, imagef.cols);
-            net->Reshape();
+            cv::Mat imagef_scaled; cv::resize(imagef, imagef_scaled, cv::Size(), s, s);
+            std::cout << "Current size: " << imagef_scaled.size() << " (" << s << ")" << std::endl;
 
-            wrapInputLayer(input_layer, input_channels);
-        }
+            if (imagef_scaled.rows != input_layer->shape(2) || imagef_scaled.cols != input_layer->shape(3))
+            {
+                // Reshape the network
+                input_layer->Reshape(1, input_layer->shape(1), imagef_scaled.rows, imagef_scaled.cols);
+                net->Reshape();
 
-        // Copy the image to the input layer of the network
-        cv::split(imagef, input_channels);
+                wrapInputLayer(input_layer, input_channels);
+            }
 
-        net->Forward();
+            // Copy the image to the input layer of the network
+            cv::split(imagef_scaled, input_channels);
 
-        // Show the accumulators on the output
-        for (int a = 0; a < net->output_blobs().size(); ++a)
-        {
-            caffe::Blob<float>* output_layer = net->output_blobs()[a];
-            cv::Mat accumulator(output_layer->shape(2), output_layer->shape(3), CV_32FC1,
-                                output_layer->mutable_cpu_data());
+            net->Forward();
 
-            cv::Mat acc_large; cv::resize(accumulator, acc_large, image.size(), 0, 0, cv::INTER_NEAREST);
+
+            // Show the result
+            caffe::Blob<float>* output = net->output_blobs()[0];
+            float *data_output = output->mutable_cpu_data();
+            cv::Mat acc_prob(output->shape(2), output->shape(3), CV_32FC1, data_output+output->offset(0, 0));
+            cv::Mat acc_xmin(output->shape(2), output->shape(3), CV_32FC1, data_output+output->offset(0, 1));
+            cv::Mat acc_ymin(output->shape(2), output->shape(3), CV_32FC1, data_output+output->offset(0, 2));
+            cv::Mat acc_xmax(output->shape(2), output->shape(3), CV_32FC1, data_output+output->offset(0, 3));
+            cv::Mat acc_ymax(output->shape(2), output->shape(3), CV_32FC1, data_output+output->offset(0, 4));
 
             double mx;
-            cv::minMaxLoc(accumulator, 0, &mx);
+            cv::minMaxLoc(acc_prob, 0, &mx);
             std::cout << mx << std::endl;
 
-            cv::imshow("Accumulator " + net->blob_names()[net->output_blob_indices()[a]], acc_large);
-//            if (net->blob_names()[net->output_blob_indices()[a]] == "acc_x4") saveImageAndAccumulator(image, acc_large, i++);
+            cv::imshow("Accumulator " + net->blob_names()[net->output_blob_indices()[0]] + " (" + std::to_string(s) + ")", acc_prob);
 
-            // Overlay
-            cv::Mat image_g; cv::cvtColor(image, image_g, CV_BGR2GRAY);
-            cv::cvtColor(image_g, image_g, CV_GRAY2BGR);
-            acc_large *= 256.0f;
-            cv::Mat acc_large_u; acc_large.convertTo(acc_large_u, CV_8UC1);
-            std::vector<cv::Mat> chnls;
-            chnls.push_back(cv::Mat::zeros(image_g.size(), CV_8UC1));
-            chnls.push_back(cv::Mat::zeros(image_g.size(), CV_8UC1));
-            chnls.push_back(acc_large_u);
-            cv::Mat acc_3ch; cv::merge(chnls, acc_3ch);
-            cv::addWeighted(image_g, 0.5, acc_3ch, 0.5, 0, image_g);
-            cv::imshow("overlay", image_g);
+            // Draw detected boxes
+            for (int i = 0; i < acc_prob.rows; ++i)
+            {
+                for (int j = 0; j < acc_prob.cols; ++j)
+                {
+                    float conf = acc_prob.at<float>(i, j);
+                    if (conf >= 0.7)
+                    {
+                        int xmin = (4*j + (80*(acc_xmin.at<float>(i, j) - 0.5))) / s;
+                        int ymin = (4*i + (80*(acc_ymin.at<float>(i, j) - 0.5))) / s;
+                        int xmax = (4*j + (80*(acc_xmax.at<float>(i, j) - 0.5))) / s;
+                        int ymax = (4*i + (80*(acc_ymax.at<float>(i, j) - 0.5))) / s;
+
+                        std::cout << acc_xmin.at<float>(i, j) << " " << acc_ymin.at<float>(i, j) << " " << acc_xmax.at<float>(i, j) << " " << acc_ymax.at<float>(i, j) << std::endl;
+
+                        if (xmin >= xmax || ymin >= ymax)
+                        {
+                            // This does not make sense
+                            std::cout << "WARNING: Coordinates do not make sense! [" << xmin << "," << ymin << "," << xmax << "," << ymax << "]" << std::endl;
+                            continue;
+                        }
+
+                        cv::rectangle(image, cv::Rect(xmin, ymin, xmax-xmin, ymax-ymin), cv::Scalar(0,0,255));
+                        cv::circle(image, cv::Point(4*j/s, 4*i/s), 2, cv::Scalar(0,255,0), -1);
+                    }
+                }
+            }
         }
 
         cv::imshow("Image", image);

@@ -231,13 +231,13 @@ void MultiscaleAccumulatorLossLayer<Dtype>::_buildAccumulators (const Blob<Dtype
                 // Data are stored like this [label, xmin, ymin, xmax, ymax]
                 const Dtype *data = labels->cpu_data() + labels->offset(b, i);
 
-                // If everything is 0, there are no more bounding boxes
-                if (data[0] == 0 && data[1] == 0 && data[2] == 0 && data[3] == 0 && data[4] == 0) break;
+                // If the label is -1, there are no more bounding boxes
+                if (data[0] == Dtype(-1.0f)) break;
 
                 // Check if the size of the bounding box fits within the bounds of this accumulator - the
                 // largest dimension of the bounding box has to by within the bounds
                 Dtype largest_dim = std::max(data[3]-data[1], data[4]-data[2]);
-                if (largest_dim > this->_bb_bounds[a].first && largest_dim < this->_bb_bounds[a].second)
+                if (largest_dim >= this->_bb_bounds[a].first && largest_dim <= this->_bb_bounds[a].second)
                 {
                     cv::circle(acc, cv::Point(scaling_ratio*(data[1]+data[3])/2,
                                               scaling_ratio*(data[2]+data[4])/2), radius, cv::Scalar(1), -1);

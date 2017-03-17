@@ -11,7 +11,6 @@ conv k3  d2  o128
 pool
 conv k3      o256
 conv k3  d2  o256
-macc x2
 macc x4
 
 ----------------------------------------------------------------------------------------------------
@@ -192,21 +191,6 @@ class MACCNetGenerator(object):
 				'}\n')
 
 
-	def _layer_sigmoid(self, bound_name):
-		"""
-		Creates description of a ReLU layer.
-
-		Input:
-			bound_name: The name of the layer to which the sigmoid should be bound
-		"""
-		return ('layer {\n' \
-				'  name: "sigmoid_' + bound_name + '"\n' \
-				'  type: "Sigmoid"\n' \
-				'  bottom: "' + bound_name + '"\n' \
-				'  top: "' + bound_name + '"\n' \
-				'}\n')
-
-
 	def _layer_conv(self, specs, deploy=False):
 		"""
 		Creates a description of a convolutional layer.
@@ -358,7 +342,7 @@ class MACCNetGenerator(object):
 					'  }\n')
 
 		out += ('  convolution_param {\n' \
-				'    num_output: 1\n' \
+				'    num_output: 5\n' \
 				'    kernel_size: 1\n')
 
 		if not deploy:
@@ -372,11 +356,6 @@ class MACCNetGenerator(object):
 
 		out += ('  }\n' \
 				'}\n')
-
-		# Since the loss computation contains sigmoid function we now have to append it in deploy 
-		# for the testing part
-		if deploy:
-			out += self._layer_sigmoid(name)
 
 		# List of accumulators - for the loss layer
 		self.accs.append(name)
@@ -402,7 +381,7 @@ class MACCNetGenerator(object):
 		out  = ('\n# ' + '-'*45 + ' LOSS ' + '-'*45 + ' #\n'
 				'layer {\n' \
 				'  name: "loss"\n' \
-				'  type: "MultiscaleAccumulatorLoss"\n' \
+				'  type: "BBTXTLoss"\n' \
 				'  bottom: "label"\n')
 
 		for acc in self.accs:
@@ -414,7 +393,7 @@ class MACCNetGenerator(object):
 				'    downsampling: %d\n'%(self.min_acc_downsampling) + \
 				'    negative_ratio: 50\n' \
 				'    circle_ratio: %f\n'%(self.circle_ratio) + \
-				'    bounds_overlap: 0.33\n' \
+				'    bounds_overlap: -0.5\n' + # Change this back to 0.33 or other for multi-scale!!
 				'  }\n' \
 				'}\n')
 
@@ -451,12 +430,11 @@ class MACCNetGenerator(object):
 				'  image_data_param {\n' \
 				'    source: ""\n' \
 				'    batch_size: 16\n' \
-				'    new_height: 128\n' \
-				'    new_width: 256\n' \
 				'  }\n' \
-				'  transform_param {\n' \
-				'    scale: 0.0078125\n' \
-				'    mean_value: 128\n' \
+				'  bbtxt_param {\n' \
+				'    width: 256\n' \
+				'    height: 128\n' \
+				'    reference_size: 80\n' \
 				'  }\n' \
 				'}\n')
 
