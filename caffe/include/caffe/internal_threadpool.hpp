@@ -54,13 +54,13 @@ protected:
      * @brief Implement this method in your subclass with the code you want your thread to run
      * @ t Thread id
      */
-    virtual void InternalThreadEntry (int t) = 0;
+    virtual void InternalThreadpoolEntry (int t) = 0;
 
     /**
      * @brief Should be tested when running loops to exit when requested
      * @param t Thread id
      */
-    bool must_stop (int t);
+    bool must_stopt (int t);
 
 
 private:

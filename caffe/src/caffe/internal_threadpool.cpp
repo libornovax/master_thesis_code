@@ -25,7 +25,7 @@ bool InternalThreadpool::is_started (int t) const
 }
 
 
-bool InternalThreadpool::must_stop (int t)
+bool InternalThreadpool::must_stopt (int t)
 {
     return this->_threads[t] && this->_threads[t]->interruption_requested();
 }
@@ -69,7 +69,7 @@ void InternalThreadpool::entry (int t, int device, Caffe::Brew mode, int rand_se
     Caffe::set_solver_rank(solver_rank);
     Caffe::set_multiprocess(multiprocess);
 
-    InternalThreadEntry(t);
+    InternalThreadpoolEntry(t);
 }
 
 

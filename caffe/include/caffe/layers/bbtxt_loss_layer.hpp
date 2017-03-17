@@ -60,7 +60,7 @@ protected:
 //    virtual void Backward_gpu (const vector<Blob<Dtype>*> &top, const vector<bool> &propagate_down,
 //                               const vector<Blob<Dtype>*> &bottom) override;
 
-    virtual void InternalThreadEntry (int t) override;
+    virtual void InternalThreadpoolEntry (int t) override;
 
     /**
      * @brief Computes the bounds of bounding box sizes for the accumulator

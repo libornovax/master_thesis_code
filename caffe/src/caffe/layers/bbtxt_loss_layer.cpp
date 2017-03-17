@@ -19,7 +19,7 @@ namespace caffe {
 template <typename Dtype>
 BBTXTLossLayer<Dtype>::BBTXTLossLayer (const LayerParameter &param)
     : LossLayer<Dtype>(param),
-      InternalThreadpool(std::max(int(boost::thread::hardware_concurrency()/2), 1)),
+      InternalThreadpool(4),
       _b_queue()
 {
     CHECK(param.has_accumulator_loss_param()) << "AccumulatorLossParameter is mandatory!";
@@ -121,15 +121,14 @@ void BBTXTLossLayer<Dtype>::Backward_cpu (const vector<Blob<Dtype>*> &top,
 
 
 template <typename Dtype>
-void BBTXTLossLayer<Dtype>::InternalThreadEntry (int t)
+void BBTXTLossLayer<Dtype>::InternalThreadpoolEntry (int t)
 {
     // This method runs on each thread of the internal threadpool
     // We build accumulator, remove negative cooordinate diff and apply diff weights for each image in
     // the batch
-    std::cout << "============================= STARTING THREAD " << t << std::endl;
 
     try {
-        while (!this->must_stop(t))
+        while (!this->must_stopt(t))
         {
             int b = this->_b_queue.pop();
 
@@ -181,8 +180,6 @@ void BBTXTLossLayer<Dtype>::InternalThreadEntry (int t)
     } catch (boost::thread_interrupted&) {
         // Interrupted exception is expected on shutdown
     }
-
-    std::cout << "============================= KILLING THREAD " << t << std::endl;
 }
 
 

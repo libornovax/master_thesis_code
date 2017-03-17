@@ -7,17 +7,19 @@
 #include <utility>
 #include <vector>
 #include <boost/algorithm/string.hpp>
+#include <boost/thread.hpp>
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
 
-#include "caffe/data_transformer.hpp"
-#include "caffe/layers/base_data_layer.hpp"
 #include "caffe/layers/bbtxt_data_layer.hpp"
 #include "caffe/util/benchmark.hpp"
 #include "caffe/util/io.hpp"
 #include "caffe/util/math_functions.hpp"
 #include "caffe/util/rng.hpp"
+#include "caffe/internal_threadpool.hpp"
+#include "caffe/util/blocking_queue.hpp"
+#include "caffe/util/blocking_counter.hpp"
 
 // The maximum number of bounding boxes (annotations) in one image - we set the label blob shape according
 // to this number
@@ -31,7 +33,8 @@ namespace {
 
     /**
      * @brief Computes the number of bounding boxes in the annotation
-     * @param labels Annotation of one image (dimensions 1 x MAX_NUM_BBS_PER_IMAGE x 5)
+     * @param labels Annotation of one image (dimensions MAX_NUM_BBS_PER_IMAGE x 5 x 1 x 1)
+     * @param b Image id in the batch
      * @return Number of bounding boxes in this label
      */
     template <typename Dtype>
@@ -40,7 +43,7 @@ namespace {
         for (int i = 0; i < labels.shape(1); ++i)
         {
             // Data are stored like this [label, xmin, ymin, xmax, ymax]
-            const Dtype *data = labels.cpu_data() + labels.offset(0, i);
+            const Dtype *data = labels.cpu_data() + labels.offset(i);
             // If the label is -1, there are no more bounding boxes
             if (data[0] == Dtype(-1.0f)) return i;
         }
@@ -52,7 +55,8 @@ namespace {
 
 template <typename Dtype>
 BBTXTDataLayer<Dtype>::BBTXTDataLayer (const LayerParameter &param)
-    : BasePrefetchingDataLayer<Dtype>(param)
+    : BasePrefetchingDataLayer<Dtype>(param),
+      InternalThreadpool(std::max(int(boost::thread::hardware_concurrency()/2), 1))
 {
 }
 
@@ -60,6 +64,7 @@ BBTXTDataLayer<Dtype>::BBTXTDataLayer (const LayerParameter &param)
 template <typename Dtype>
 BBTXTDataLayer<Dtype>::~BBTXTDataLayer<Dtype> ()
 {
+    this->StopInternalThreadpool();
     this->StopInternalThread();
 }
 
@@ -95,17 +100,13 @@ void BBTXTDataLayer<Dtype>::DataLayerSetUp (const vector<Blob<Dtype>*> &bottom,
 
 
     // This is the shape of the input blob
-    std::vector<int> top_shape = {1, 3, height, width};
+    std::vector<int> top_shape = {batch_size, 3, height, width};
     this->transformed_data_.Reshape(top_shape);  // For prefetching
-
-    top_shape[0] = batch_size;
     top[0]->Reshape(top_shape);
 
     // Label blob
-    std::vector<int> label_shape = {1, MAX_NUM_BBS_PER_IMAGE, 5};
+    std::vector<int> label_shape = {batch_size, MAX_NUM_BBS_PER_IMAGE, 5};
     this->transformed_label_.Reshape(label_shape);  // For prefetching
-
-    label_shape[0] = batch_size;
     top[1]->Reshape(label_shape);
 
 
@@ -116,6 +117,8 @@ void BBTXTDataLayer<Dtype>::DataLayerSetUp (const vector<Blob<Dtype>*> &bottom,
         this->prefetch_[i]->data_.Reshape(top_shape);
         this->prefetch_[i]->label_.Reshape(label_shape);
     }
+
+    this->StartInternalThreadpool();
 }
 
 
@@ -134,56 +137,57 @@ void BBTXTDataLayer<Dtype>::load_batch (Batch<Dtype> *batch)
     Dtype* prefetch_data  = batch->data_.mutable_cpu_data();
     Dtype* prefetch_label = batch->label_.mutable_cpu_data();
 
-    for (int b = 0; b < batch_size; ++b)
-    {
-        cv::Mat cv_img = cv::imread(this->_images[this->_i_global].first, CV_LOAD_IMAGE_COLOR);
-        CHECK(cv_img.data) << "Could not open " << this->_images[this->_i_global].first;
+    this->transformed_data_.set_cpu_data(prefetch_data);
+    this->transformed_label_.set_cpu_data(prefetch_label);
 
-        // Prepare the blob for the annotation (bounding boxes)
-        int offset_label = batch->label_.offset(b);
-        this->transformed_label_.set_cpu_data(prefetch_label + offset_label);
-        // Copy the annotation - we really have to copy it because it will be altered during image
-        // transformations like cropping or scaling
-        std::shared_ptr<Blob<Dtype>> plabel = this->_images[this->_i_global].second;
-        caffe_copy(plabel->count(), plabel->cpu_data(), this->transformed_label_.mutable_cpu_data());
-
-        // Prepare the blob for the current image
-        int offset_image = batch->data_.offset(b);
-        this->transformed_data_.set_cpu_data(prefetch_data + offset_image);
-
-
-        // We select a bounding box from the image and then make a crop such that the bounding box is inside
-        // of it and it has the reference size (Training - we select a random bounding box to crop from each
-        // image, Testing - crop all bounding boxes from the image - this way we ensure the test set is
-        // always the same)
-        this->_cropAndTransform(cv_img, this->transformed_data_, this->transformed_label_);
-
-
-        // Move index to the next image
-        if (this->phase_ == TRAIN) this->_i_global++;
-        else
-        {
-            // Test phase - cropping all bounding boxes - move index to the next one in the image
-            this->_bb_id_global++;
-            if (this->_bb_id_global >= numBBs(this->transformed_label_))
-            {
-                // This image has no more bounding boxes, move to the next image
-                this->_bb_id_global = 0;
-                this->_i_global++;
-            }
-        }
-
-        if (this->_i_global >= this->_images.size())
-        {
-            // Restart the counter from the begining
-            if (this->layer_param_.image_data_param().shuffle()) this->_shuffleImages();
-            this->_i_global = 0;
-        }
-    }
+    for (int b = 0; b < batch_size; ++b) this->_b_queue.push(b);
+    this->_num_processed.waitToCount(batch_size);
 
     std::cout << "Time to read data: " << timer.MilliSeconds() << " ms" << std::endl;
 }
 
+
+template <typename Dtype>
+void BBTXTDataLayer<Dtype>::InternalThreadpoolEntry (int t)
+{
+    // This method runs on each thread of the internal threadpool
+
+    std::cout << "============================= STARTING DATA THREAD " << t << std::endl;
+
+    try {
+        while (!this->must_stopt(t))
+        {
+            int b = this->_b_queue.pop();
+
+            // Get index of image and bounding box we will crop
+            SelectedBB<Dtype> selbb = this->_getImageAndBB(b);
+
+
+            cv::Mat cv_img = cv::imread(selbb.filename, CV_LOAD_IMAGE_COLOR);
+            CHECK(cv_img.data) << "Could not open " << selbb.filename;
+
+            // Copy the annotation - we really have to copy it because it will be altered during image
+            // transformations like cropping or scaling
+            caffe_copy(selbb.label->count(), selbb.label->cpu_data(),
+                       this->transformed_label_.mutable_cpu_data() + this->transformed_label_.offset(b));
+
+            // We select a bounding box from the image and then make a crop such that the bounding box is
+            // inside of it and it has the reference size (Training - we select a random bounding box to crop
+            // from each image, Testing - crop all bounding boxes from the image - this way we ensure
+            // the test set is always the same)
+            this->_cropAndTransform(cv_img, b, selbb.bb_id);
+
+
+            // Raise the counter on processed images
+            this->_num_processed.increase();
+
+        }
+    } catch (boost::thread_interrupted&) {
+        // Interrupted exception is expected on shutdown
+    }
+
+    std::cout << "============================= KILLING DATA THREAD " << t << std::endl;
+}
 
 
 // -----------------------------------------  PROTECTED METHODS  ----------------------------------------- //
@@ -266,51 +270,26 @@ void BBTXTDataLayer<Dtype>::_shuffleImages ()
 
 
 template <typename Dtype>
-void BBTXTDataLayer<Dtype>::_cropAndTransform (const cv::Mat &cv_img, Blob<Dtype> &transformed_image,
-                                             Blob<Dtype> &transformed_label)
+void BBTXTDataLayer<Dtype>::_cropAndTransform (const cv::Mat &cv_img, int b, int bb_id)
 {
     CHECK_EQ(cv_img.channels(), 3) << "Image must have 3 color channels";
 
-    // We select a bounding box from the image and then make a crop such that the bounding box is inside
-    // of it and it has the reference size
+    // Crop this bounding box from the image
     cv::Mat cv_img_cropped;
-    if (transformed_label.cpu_data()[0] == Dtype(-1.0f))
-    {
-        // The label of the first bounding box is -1, that means that this image contains no bounding boxes
-        cv::resize(cv_img, cv_img_cropped, cv::Size(this->layer_param_.bbtxt_param().width(),
-                                                    this->layer_param_.bbtxt_param().height()));
-    }
-    else
-    {
-        // There are bounding boxes - lets select one
-        int bb_id;
-        if (this->phase_ == TRAIN)
-        {
-            caffe::rng_t* rng = static_cast<caffe::rng_t*>(this->_rng->generator());
-            boost::random::uniform_int_distribution<> dist(0, numBBs(transformed_label)-1);
-            bb_id = dist(*rng);  // Random bounding box id
-        }
-        else
-        {
-            bb_id = this->_bb_id_global;
-        }
+    this->_cropBBFromImage(cv_img, cv_img_cropped, b, bb_id);
 
-        // Crop this bounding box from the image
-        this->_cropBBFromImage(cv_img, cv_img_cropped, transformed_label, bb_id);
+    // Mirror
 
-        // Mirror
-
-        // Rotate
-    }
+    // Rotate
 
     // Copy the cropped and transformed image to the input blob
-    this->_applyPixelTransformationsAndCopyOut(cv_img_cropped, transformed_image);
+    this->_applyPixelTransformationsAndCopyOut(cv_img_cropped, b);
 }
 
 
 template <typename Dtype>
 void BBTXTDataLayer<Dtype>::_cropBBFromImage (const cv::Mat &cv_img, cv::Mat &cv_img_cropped_out,
-                                              Blob<Dtype> &transformed_label, int bb_id)
+                                              int b, int bb_id)
 {
     // Input dimensions of the network
     const int height   = this->layer_param_.bbtxt_param().height();
@@ -328,7 +307,7 @@ void BBTXTDataLayer<Dtype>::_cropBBFromImage (const cv::Mat &cv_img, cv::Mat &cv
 
 
     // Get dimensions of the bounding box - format [label, xmin, ymin, xmax, ymax]
-    const Dtype *bb_data = transformed_label.cpu_data() + transformed_label.offset(0, bb_id);
+    const Dtype *bb_data = this->transformed_label_.cpu_data() + this->transformed_label_.offset(b, bb_id);
     const Dtype x = bb_data[1];
     const Dtype y = bb_data[2];
     const Dtype w = bb_data[3] - bb_data[1];
@@ -373,10 +352,10 @@ void BBTXTDataLayer<Dtype>::_cropBBFromImage (const cv::Mat &cv_img, cv::Mat &cv
     // Update the bounding box coordinates - we need to update all annotations
     Dtype x_scaling   = float(width) / crop_width;
     Dtype y_scaling   = float(height) / crop_height;
-    for (int b = 0; b < MAX_NUM_BBS_PER_IMAGE; ++b)
+    for (int i = 0; i < MAX_NUM_BBS_PER_IMAGE; ++i)
     {
         // Data are stored like this [label, xmin, ymin, xmax, ymax]
-        Dtype *data = transformed_label.mutable_cpu_data() + transformed_label.offset(0, b);
+        Dtype *data = this->transformed_label_.mutable_cpu_data() + this->transformed_label_.offset(b, i);
 
         if (data[0] == Dtype(-1.0f)) break;
 
@@ -394,15 +373,15 @@ void BBTXTDataLayer<Dtype>::_cropBBFromImage (const cv::Mat &cv_img, cv::Mat &cv
 
 
 template <typename Dtype>
-void BBTXTDataLayer<Dtype>::_applyPixelTransformationsAndCopyOut (const cv::Mat &cv_img_cropped,
-                                                                  Blob<Dtype> &transformed_image)
+void BBTXTDataLayer<Dtype>::_applyPixelTransformationsAndCopyOut (const cv::Mat &cv_img_cropped, int b)
 {
-    CHECK(cv_img_cropped.data) << "Something went wrong with cropping!";
-    CHECK_EQ(cv_img_cropped.rows, transformed_image.shape(2)) << "Wrong crop height! Does not match network!";
-    CHECK_EQ(cv_img_cropped.cols, transformed_image.shape(3)) << "Wrong crop width! Does not match network!";
-
     const int width  = cv_img_cropped.cols;
     const int height = cv_img_cropped.rows;
+
+    CHECK(cv_img_cropped.data) << "Something went wrong with cropping!";
+    CHECK_EQ(height, this->transformed_data_.shape(2)) << "Wrong crop height! Does not match network!";
+    CHECK_EQ(width,  this->transformed_data_.shape(3)) << "Wrong crop width! Does not match network!";
+
 
     // Distortions of the image color space - during testing those will be 0
     Dtype exposure         = Dtype(0.0f);
@@ -427,7 +406,7 @@ void BBTXTDataLayer<Dtype>::_applyPixelTransformationsAndCopyOut (const cv::Mat 
 
     // Normalize to 0 mean and unit variance and copy the image to the transformed_image
     // + apply exposure, noise, hue, saturation, ...
-    Dtype* transformed_data = transformed_image.mutable_cpu_data();
+    Dtype* transformed_data = this->transformed_data_.mutable_cpu_data() + this->transformed_data_.offset(b);
     for (int i = 0; i < height; ++i)
     {
         const uchar* ptr  = cv_img_cropped.ptr<uchar>(i);
@@ -460,6 +439,48 @@ void BBTXTDataLayer<Dtype>::_applyPixelTransformationsAndCopyOut (const cv::Mat 
 //    cv::imwrite("transfromed" + std::to_string(imi++) + ".png", img_u);
 }
 
+
+template <typename Dtype>
+SelectedBB<Dtype> BBTXTDataLayer<Dtype>::_getImageAndBB(int b)
+{
+    std::lock_guard<std::mutex> lock(this->_i_global_mtx);
+
+    // Struct where we will store the selected image filename and original label
+    SelectedBB<Dtype> sel;
+    sel.filename = this->_images[this->_i_global].first;
+    sel.label = this->_images[this->_i_global].second;
+
+    if (this->phase_ == TRAIN)
+    {
+        caffe::rng_t* rng = static_cast<caffe::rng_t*>(this->_rng->generator());
+        boost::random::uniform_int_distribution<> dist(0, numBBs(*sel.label)-1);
+        sel.bb_id = dist(*rng);  // Random bounding box id
+
+        this->_i_global++;
+    }
+    else
+    {
+        sel.bb_id = this->_bb_id_global;
+
+        // Test phase - cropping all bounding boxes - move index to the next one in the image
+        this->_bb_id_global++;
+        if (this->_bb_id_global >= numBBs(*sel.label))
+        {
+            // This image has no more bounding boxes, move to the next image
+            this->_bb_id_global = 0;
+            this->_i_global++;
+        }
+    }
+
+    if (this->_i_global >= this->_images.size())
+    {
+        // Restart the counter from the begining
+        if (this->layer_param_.image_data_param().shuffle()) this->_shuffleImages();
+        this->_i_global = 0;
+    }
+
+    return sel;
+}
 
 
 // ----------------------------------------  LAYER INSTANTIATION  ---------------------------------------- //
