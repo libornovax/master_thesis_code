@@ -81,21 +81,26 @@ class LearningCurvePlotter(object):
 				# I0315 ... solver.cpp:331] Iteration 9400, Testing net (#0)
 				# I0315 ... solver.cpp:398] Test net output #0: loss = 0.00676247 (* 1 = 0.00676247 loss)
 				# I0315 ... solver.cpp:219] Iteration 16740 (0.509044 iter/s, 19.6447s/10 iters), loss = 0.00493241
+				# I0315 ... solver.cpp:238] Train net output #0: loss = 0.0794668 (* 1 = 0.0794668 loss)
 
 				m = re.match(r'.* Iteration ([0-9]+), Testing net .*', line)
 				if m is not None:
 					self.iters_valid.append(int(m.group(1)))
 					continue
 
-				m = re.match(r'.* Test net output .* loss = ([0-9]+(\.[0-9]+)?) .*', line)
+				m = re.match(r'.* Test net output .* loss = ([0-9]+(\.[0-9]+)?|nan|-nan) .*', line)
 				if m is not None:
 					self.losses_valid.append(float(m.group(1)))
 					continue
 
-				m = re.match(r'.* Iteration ([0-9]+) .* loss = ([0-9]+(\.[0-9]+)?).*', line)
+				m = re.match(r'.* Iteration ([0-9]+) \(.*iters.*\), loss = .*', line)
 				if m is not None:
 					self.iters_train.append(int(m.group(1)))
-					self.losses_train.append(float(m.group(2)))
+					continue
+
+				m = re.match(r'.* Train net output .* loss = ([0-9]+(\.[0-9]+)?|nan|-nan).*', line)
+				if m is not None:
+					self.losses_train.append(float(m.group(1)))
 					continue
 
 		print('-- Done processing log')
