@@ -56,7 +56,7 @@ void runPyramidDetection (const std::string &path_prototxt, const std::string &p
     caffe::Caffe::set_mode(caffe::Caffe::GPU);
 #endif
 
-    const std::vector<double> scales = {2.25, 1.5, 1.0, 0.66, 0.44};
+    const std::vector<double> scales = {2.25, 1.5, 1.0, 0.66, 0.44, 0.29};
 
     // Create network and load trained weights from caffemodel file
     auto net = std::make_shared<caffe::Net<float>>(path_prototxt, caffe::TEST);

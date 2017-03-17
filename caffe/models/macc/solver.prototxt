@@ -1,4 +1,4 @@
-net: "/Users/libornovak/Software/master_thesis/caffe/models/macc/test/macc_0.25_r2_x1_to_x64_train_val.prototxt"
+net: "/Users/libornovak/Software/master_thesis/caffe/models/macc/test/macc_0.3_r2_x4_train_val.prototxt"
 
 type: "SGD"
 
