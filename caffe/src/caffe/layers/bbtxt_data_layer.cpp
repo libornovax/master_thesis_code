@@ -296,7 +296,7 @@ void BBTXTDataLayer<Dtype>::_cropBBFromImage (const cv::Mat &cv_img, cv::Mat &cv
     if (this->phase_ == TRAIN)
     {
         // Vary the reference bounding box size a bit, i.e. the size of the object when it is cropped
-        boost::random::uniform_int_distribution<> dists(-reference_size/20, reference_size/10);
+        boost::random::uniform_int_distribution<> dists(-reference_size/10, reference_size/5);
         reference_size += dists(*rng);
     }
 
