@@ -70,12 +70,14 @@ def get_value_int(data, id, required=False):
 ####################################################################################################
 
 class MACCNetGenerator(object):
-	def __init__(self, path_config):
+	def __init__(self, path_config, bb_type):
 		"""
 		Input:
 			path_config: Path to a configuration file with net structure
+			bb_type:     Type of data and loss layers ('bbtxt', 'bb3txt')
 		"""
 		self.path_config = path_config
+		self.bb_type     = bb_type
 
 		self.reset()
 
@@ -342,7 +344,7 @@ class MACCNetGenerator(object):
 					'  }\n')
 
 		out += ('  convolution_param {\n' \
-				'    num_output: 5\n' \
+				'    num_output: ' + ('8' if self.bb_type == 'bb3txt' else '5') + '\n' \
 				'    kernel_size: 1\n')
 
 		if not deploy:
@@ -381,7 +383,7 @@ class MACCNetGenerator(object):
 		out  = ('\n# ' + '-'*45 + ' LOSS ' + '-'*45 + ' #\n'
 				'layer {\n' \
 				'  name: "loss"\n' \
-				'  type: "BBTXTLoss"\n' \
+				'  type: "BB' + ('3' if self.bb_type == 'bb3txt' else '') + 'TXTLoss"\n' \
 				'  bottom: "label"\n')
 
 		for acc in self.accs:
@@ -421,7 +423,7 @@ class MACCNetGenerator(object):
 		"""
 		out  = ('layer {\n' \
 				'  name: "data"\n' \
-				'  type: "BBTXTData"\n' \
+				'  type: "BB' + ('3' if self.bb_type == 'bb3txt' else '') + 'TXTData"\n' \
 				'  top: "data"\n' \
 				'  top: "label"\n' \
 				'  include {\n' \
@@ -474,10 +476,16 @@ def parse_arguments():
 	                    help='A configuration TXT file with network structure')
 	parser.add_argument('path_out', metavar='path_out', type=str,
 	                    help='Path to the output folder')
+	parser.add_argument('bb_type', metavar='bb_type', type=str,
+	                    help='Type of data and loss layers. One of ["bbtxt", "bb3txt"]')
 
 	args = parser.parse_args()
 
 	if not check_path(args.path_config):
+		parser.print_help()
+		exit(1)
+	if args.bb_type not in ['bbtxt', 'bb3txt']:
+		print('ERROR: Incorrect data and loss type!')
 		parser.print_help()
 		exit(1)
 
@@ -487,7 +495,7 @@ def parse_arguments():
 def main():
 	args = parse_arguments()
 	
-	ng = MACCNetGenerator(args.path_config)
+	ng = MACCNetGenerator(args.path_config, args.bb_type)
 	ng.generate_prototxt_files(args.path_out)
 
 
