@@ -12,7 +12,7 @@ python kitti2bb3txt.py path_labels path_images outfile.bb3txt
 ----------------------------------------------------------------------------------------------------
 """
 
-__date__   = '03/17/2016'
+__date__   = '03/17/2017'
 __author__ = 'Libor Novak'
 __email__  = 'novakli2@fel.cvut.cz'
 
@@ -203,7 +203,7 @@ def translate_file(path_labels, path_images, outfile, label):
 				line_out += '1 '
 				# 3D bounding box is specified by the image coordinates of the front bottom left and
 				# right corners, rear bottom left corner and y coordinate of the front top left
-				# corner (i.e. 7DOF)
+				# corner
 				line_out += str(x[0,2]) + ' ' + str(x[1,2]) + ' ' + str(x[0,0]) + ' ' \
 				 	      + str(x[1,0]) + ' ' + str(x[0,3]) + ' ' + str(x[1,3]) + ' ' \
 				 	      + str(x[1,6]) + '\n'

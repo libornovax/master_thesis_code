@@ -13,7 +13,7 @@ __email__  = 'novakli2@fel.cvut.cz'
 
 class BB2D(object):
 	"""
-	A 2D bounding box with a label and a confidence. Such a bounding box is ment to be read
+	A 2D bounding box with a label and a confidence. Such a bounding box is meant to be read
 	from BBTXT files.
 	"""
 	def __init__(self, xmin, ymin, xmax, ymax, label=None, confidence=None):
@@ -74,3 +74,36 @@ class BB2D(object):
 		return 'BB2D: {[' + str(self.xmin) + ', ' + str(self.ymin) + ', ' + str(self.xmax) + ', ' \
 			+ str(self.ymax) + '] label: ' + str(self.label) + ', confidence: ' \
 			+ str(self.confidence) + '}'
+
+
+
+class BB3D(object):
+	"""
+	A 3D bounding box with a label and a confidence. Such a bounding box is meant to be read
+	from BB3TXT files.
+	"""
+	def __init__(self, fblx, fbly, fbrx, fbry, rblx, rbly, ftly, label=None, confidence=None):
+		super(BB3D, self).__init__()
+		
+		self.fblx = float(fblx)
+		self.fbly = float(fbly)
+		self.fbrx = float(fbrx)
+		self.fbry = float(fbry)
+		self.rblx = float(rblx)
+		self.rbly = float(rbly)
+		self.ftly = float(ftly)
+
+		self.label 		= int(label) if (label is not None) else label
+		self.confidence = float(confidence) if (confidence is not None) else confidence
+
+
+	def __repr__(self):
+		"""
+		Text representation of this class.
+		"""
+		return 'BB3D: {fbl: [' + str(self.fblx) + ',' + str(self.fbly) + '], fbr: [' \
+			    + str(self.fbrx) + ',' + str(self.fbry) + '], rbl: [' + str(self.rblx) + ',' \
+			    + str(self.rbly) + '], ftly: ' + str(self.ftly) + ', label: ' + str(self.label) \
+			    + ', confidence: ' + str(self.confidence) + '}'
+
+

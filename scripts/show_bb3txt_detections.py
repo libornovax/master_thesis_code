@@ -1,17 +1,17 @@
 """
-Displays given detections over images. Paths to images it takes from the detections BBTXT file and
-uses them to load images to display. If a ground truth BBTXT file is provided it must contain
+Displays given detections over images. Paths to images it takes from the detections BB3TXT file and
+uses them to load images to display. If a ground truth BB3TXT file is provided it must contain
 the same paths to images as the file with detections.
 
 This program has a simple user interface where 'left' and 'right' arrow keys function as previous
 and next keys. The 'q' key exits the program.
 
 ----------------------------------------------------------------------------------------------------
-python show_detections.py path_detections detections_mapping
+python show_bb3txt_detections.py path_detections detections_mapping
 ----------------------------------------------------------------------------------------------------
 """
 
-__date__   = '12/02/2016'
+__date__   = '03/18/2017'
 __author__ = 'Libor Novak'
 __email__  = 'novakli2@fel.cvut.cz'
 
@@ -23,7 +23,7 @@ from matplotlib import pyplot as plt
 import matplotlib.image as mpimg
 import matplotlib.patches as patches
 
-from data.shared.bbtxt import load_bbtxt
+from data.shared.bb3txt import load_bb3txt
 from data.mappings.utils import LabelMappingManager
 
 
@@ -31,7 +31,7 @@ from data.mappings.utils import LabelMappingManager
 #                                           DEFINITIONS                                            # 
 ####################################################################################################
 
-# Categories (labels) for which we plot the PR curves
+# Categories (labels), which show
 CATEGORIES = [
 	'car',
 	'person'
@@ -62,13 +62,13 @@ class DetectionBrowser(object):
 				 path_gt=None, gt_mapping=None, path_datasets=None):
 		"""
 		Input:
-			path_detections:    Path to the BBTXT file with detections
-			detections_mapping: Name of the mapping of the path_detections BBTXT file
+			path_detections:    Path to the BB3TXT file with detections
+			detections_mapping: Name of the mapping of the path_detections BB3TXT file
 			confidence:         Minimum confidence of a detection to be displayed
-			path_gt:            Path to the BBTXT file with ground truth (optional)
-			gt_mapping:         Name of the mapping of the path_gt BBTXT file (optional)
+			path_gt:            Path to the BB3TXT file with ground truth (optional)
+			gt_mapping:         Name of the mapping of the path_gt BB3TXT file (optional)
 			path_datasets:      Path to the "datasets" folder on this machine, replaces the path
-								that is in the BBTXT files if provided
+								that is in the BB3TXT files if provided
 		"""
 		super(DetectionBrowser, self).__init__()
 		
@@ -76,14 +76,14 @@ class DetectionBrowser(object):
 		self.path_datasets = path_datasets
 
 		print('-- Loading detections: ' + path_detections)
-		self.iml_detections     = load_bbtxt(path_detections)
+		self.iml_detections     = load_bb3txt(path_detections)
 		self.detections_mapping = LMM.get_mapping(detections_mapping)
 
 		self._create_file_list()
 		
 		if path_gt is not None and gt_mapping is not None:
 			print('-- Loading ground truth: ' + path_gt)
-			self.iml_gt     = load_bbtxt(path_gt)
+			self.iml_gt     = load_bb3txt(path_gt)
 			self.gt_mapping = LMM.get_mapping(gt_mapping)
 		else:
 			self.iml_gt     = None
@@ -145,17 +145,17 @@ class DetectionBrowser(object):
 		self.ax.imshow(img)
 
 		if self.iml_gt is not None:
-			self._render_bounding_boxes(self.iml_gt, self.gt_mapping, gt=True)
-		self._render_bounding_boxes(self.iml_detections, self.detections_mapping)
+			self._render_3d_boxes(self.iml_gt, self.gt_mapping, gt=True)
+		self._render_3d_boxes(self.iml_detections, self.detections_mapping)
 
 		plt.title('[' + str(self.cursor) + '] ' + self.file_list[self.cursor])
 		plt.axis('off')
 		self.fig.canvas.draw()
 
 
-	def _render_bounding_boxes(self, iml, mapping, gt=False):
+	def _render_3d_boxes(self, iml, mapping, gt=False):
 		"""
-		Renders bounding boxes from the given list on the current image.
+		Renders 3D bounding boxes from the given list on the current image.
 
 		Input:
 			iml:     Image list (either self.iml_gt or self.iml_detections)
@@ -171,13 +171,12 @@ class DetectionBrowser(object):
 					id = CATEGORIES.index(mapping[bb.label])
 					color = '#ffd633' if gt else COLORS[id]  # Ground truth has always the same color
 
-					rect = patches.Rectangle((bb.xmin, bb.ymin), bb.width(), bb.height(),
-											 linewidth=(1 if gt else 2), edgecolor=color,
-											 facecolor='none')
-					self.ax.add_patch(rect)
+					self.ax.plot([bb.fblx, bb.fbrx], [bb.fbly, bb.fbry], color=color, linewidth=2)
+					self.ax.plot([bb.fblx, bb.fblx], [bb.fbly, bb.ftly], color=color, linewidth=2)
+					self.ax.plot([bb.fblx, bb.rblx], [bb.fbly, bb.rbly], color='g', linewidth=2)
 
 					txt = mapping[bb.label] if gt else mapping[bb.label] + ' %.3f'%(bb.confidence)
-					self.ax.text(bb.xmin, bb.ymin-5, txt, fontsize=15, color=color)
+					self.ax.text(bb.fblx, bb.ftly-5, txt, fontsize=15, color=color)
 
 
 	def browse(self, offset=0):
@@ -233,20 +232,20 @@ def parse_arguments():
 	"""
 	parser = argparse.ArgumentParser(description='Plot the precision/recall curve.')
 	parser.add_argument('path_detections', metavar='path_detections', type=str,
-						help='Path to the BBTXT file with detections to be shown')
+						help='Path to the BB3TXT file with detections to be shown')
 	parser.add_argument('detections_mapping', metavar='detections_mapping', type=str,
-						help='Label mapping of the detections BBTXT file. One of ' \
+						help='Label mapping of the detections BB3TXT file. One of ' \
 						+ str(LMM.available_mappings()))
 	parser.add_argument('--path_gt', type=str, default=None,
-						help='Path to the BBTXT ground truth file (also --gt_mapping is required)')
+						help='Path to the BB3TXT ground truth file (also --gt_mapping is required)')
 	parser.add_argument('--gt_mapping', type=str, default=None,
-						help='Label mapping of the ground truth BBTXT file. One of ' \
+						help='Label mapping of the ground truth BB3TXT file. One of ' \
 						+ str(LMM.available_mappings()))
 	parser.add_argument('--confidence', type=float, default=0.5,
 						help='Minimum confidence of shown bounding boxes')
 	parser.add_argument('--path_datasets', type=str, default=None,
 						help='Path to the "datasets" folder on this machine - will be used to ' \
-						'replace the path from the test and gt BBTXT files so we could show the ' \
+						'replace the path from the test and gt BB3TXT files so we could show the ' \
 						'images even if the test was carried out on a different PC')
 
 	args = parser.parse_args()
