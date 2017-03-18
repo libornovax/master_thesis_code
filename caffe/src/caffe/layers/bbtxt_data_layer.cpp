@@ -338,7 +338,7 @@ void BBTXTDataLayer<Dtype>::_cropBBFromImage (const cv::Mat &cv_img, cv::Mat &cv
 
     cv::Mat cv_img_padded;
     cv::copyMakeBorder(cv_img, cv_img_padded, border_top, border_bottom, border_left, border_right,
-                       cv::BORDER_REPLICATE);
+                       cv::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
     // Crop
     cv_img_cropped_out = cv_img_padded(cv::Rect(crop_x+border_left, crop_y+border_top, crop_width, crop_height));
     cv::resize(cv_img_cropped_out, cv_img_cropped_out, cv::Size(width, height));
