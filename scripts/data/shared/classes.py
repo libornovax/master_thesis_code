@@ -82,9 +82,13 @@ class BB3D(object):
 	A 3D bounding box with a label and a confidence. Such a bounding box is meant to be read
 	from BB3TXT files.
 	"""
-	def __init__(self, fblx, fbly, fbrx, fbry, rblx, rbly, ftly, label=None, confidence=None):
+	def __init__(self, xmin, ymin, xmax, ymax, fblx, fbly, fbrx, fbry, rblx, rbly, ftly, 
+				 label=None, confidence=None):
 		super(BB3D, self).__init__()
 		
+		# This is to store the bounding box in 2D
+		self.bb2d = BB2D(xmin, ymin, xmax, ymax)
+		# 3D bounding box
 		self.fblx = float(fblx)
 		self.fbly = float(fbly)
 		self.fbrx = float(fbrx)

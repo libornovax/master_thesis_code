@@ -2,9 +2,9 @@
 Script for translating the KITTI 3D bounding box annotation format into the BB3TXT data format.
 
 A BB3TXT file is formatted like this:
-filename label confidence fblx fbly fbrx fbry rblx rbly ftly
-filename label confidence fblx fbly fbrx fbry rblx rbly ftly
-filename label confidence fblx fbly fbrx fbry rblx rbly ftly
+filename label confidence xmin ymin xmax ymax fblx fbly fbrx fbry rblx rbly ftly
+filename label confidence xmin ymin xmax ymax fblx fbly fbrx fbry rblx rbly ftly
+filename label confidence xmin ymin xmax ymax fblx fbly fbrx fbry rblx rbly ftly
 ...
 
 ----------------------------------------------------------------------------------------------------
@@ -204,7 +204,9 @@ def translate_file(path_labels, path_images, outfile, label):
 				# 3D bounding box is specified by the image coordinates of the front bottom left and
 				# right corners, rear bottom left corner and y coordinate of the front top left
 				# corner
-				line_out += str(x[0,2]) + ' ' + str(x[1,2]) + ' ' + str(x[0,0]) + ' ' \
+				line_out += str(min_uv[0,0]) + ' ' + str(min_uv[1,0]) + ' ' \
+						  + str(max_uv[0,0]) + ' ' + str(max_uv[1,0]) + ' ' \
+						  + str(x[0,2]) + ' ' + str(x[1,2]) + ' ' + str(x[0,0]) + ' ' \
 				 	      + str(x[1,0]) + ' ' + str(x[0,3]) + ' ' + str(x[1,3]) + ' ' \
 				 	      + str(x[1,6]) + '\n'
 

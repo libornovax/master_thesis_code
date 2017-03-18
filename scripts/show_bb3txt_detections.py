@@ -171,6 +171,11 @@ class DetectionBrowser(object):
 					id = CATEGORIES.index(mapping[bb.label])
 					color = '#ffd633' if gt else COLORS[id]  # Ground truth has always the same color
 
+					rect = patches.Rectangle((bb.bb2d.xmin, bb.bb2d.ymin), bb.bb2d.width(), 
+											  bb.bb2d.height(), linewidth=1, edgecolor=color,
+											  facecolor='none')
+					self.ax.add_patch(rect)
+
 					self.ax.plot([bb.fblx, bb.fbrx], [bb.fbly, bb.fbry], color=color, linewidth=2)
 					self.ax.plot([bb.fblx, bb.fblx], [bb.fbly, bb.ftly], color=color, linewidth=2)
 					self.ax.plot([bb.fblx, bb.rblx], [bb.fbly, bb.rbly], color='g', linewidth=2)
