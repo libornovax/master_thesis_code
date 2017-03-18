@@ -1,54 +1,30 @@
 //
 // Libor Novak
-// 02/21/2017
+// 03/18/2017
 //
 
-#ifndef CAFFE_BBTXT_DATA_LAYER_HPP_
-#define CAFFE_BBTXT_DATA_LAYER_HPP_
+#ifndef CAFFE_BB3TXT_DATA_LAYER_HPP_
+#define CAFFE_BB3TXT_DATA_LAYER_HPP_
 
-#include <string>
-#include <utility>
-#include <vector>
-#include <mutex>
-
-#include "caffe/blob.hpp"
-#include "caffe/data_transformer.hpp"
-#include "caffe/internal_threadpool.hpp"
-#include "caffe/layer.hpp"
-#include "caffe/layers/base_data_layer.hpp"
-#include "caffe/proto/caffe.pb.h"
-#include "caffe/util/blocking_queue.hpp"
-#include "caffe/util/blocking_counter.hpp"
+#include "caffe/layers/bbtxt_data_layer.hpp"
 
 
 namespace caffe {
 
 
 /**
- * @brief Stuct for storing indices of images and bounding boxes
- */
-template <typename Dtype>
-struct SelectedBB
-{
-    std::string filename;
-    std::shared_ptr<Blob<Dtype>> label;
-    int bb_id;
-};
-
-
-/**
- * @brief The BBTXTDataLayer class
+ * @brief The BB3TXTDataLayer class
  *
- * The BBTXTDataLayer loads a BBTXT file with 2D bounding boxes and runs learning on the images specified in
+ * The BB3TXTDataLayer loads a BBTXT file with 2D bounding boxes and runs learning on the images specified in
  * the paths in the given file.
  */
 template <typename Dtype>
-class BBTXTDataLayer : public BasePrefetchingDataLayer<Dtype>, public InternalThreadpool
+class BB3TXTDataLayer : public BasePrefetchingDataLayer<Dtype>, public InternalThreadpool
 {
 public:
 
-    explicit BBTXTDataLayer (const LayerParameter &param);
-    virtual ~BBTXTDataLayer ();
+    explicit BB3TXTDataLayer (const LayerParameter &param);
+    virtual ~BB3TXTDataLayer ();
 
     /**
      * @brief Load the BBTXT file and check if images exist
@@ -61,7 +37,7 @@ public:
 
     virtual inline const char* type () const override
     {
-        return "BBTXTData";
+        return "BB3TXTData";
     }
 
     virtual inline int ExactNumBottomBlobs () const override
@@ -85,7 +61,7 @@ protected:
     /**
      * @brief Loads the whole input file in the memory and creates label blobs
      */
-    virtual void _loadBBTXTFile ();
+    virtual void _loadBB3TXTFile ();
 
     /**
      * @brief Shuffle images in the dataset
@@ -146,4 +122,4 @@ protected:
 }  // namespace caffe
 
 
-#endif  // CAFFE_BBTXT_DATA_LAYER_HPP_
+#endif  // CAFFE_BB3TXT_DATA_LAYER_HPP_

@@ -12,14 +12,11 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
 
-#include "caffe/layers/bbtxt_data_layer.hpp"
+#include "caffe/layers/bb3txt_data_layer.hpp"
 #include "caffe/util/benchmark.hpp"
 #include "caffe/util/io.hpp"
 #include "caffe/util/math_functions.hpp"
 #include "caffe/util/rng.hpp"
-#include "caffe/internal_threadpool.hpp"
-#include "caffe/util/blocking_queue.hpp"
-#include "caffe/util/blocking_counter.hpp"
 
 // The maximum number of bounding boxes (annotations) in one image - we set the label blob shape according
 // to this number
@@ -33,7 +30,7 @@ namespace {
 
     /**
      * @brief Computes the number of bounding boxes in the annotation
-     * @param labels Annotation of one image (dimensions MAX_NUM_BBS_PER_IMAGE x 5 x 1 x 1)
+     * @param labels Annotation of one image (dimensions MAX_NUM_BBS_PER_IMAGE x 12 x 1 x 1)
      * @param b Image id in the batch
      * @return Number of bounding boxes in this label
      */
@@ -42,7 +39,7 @@ namespace {
     {
         for (int i = 0; i < labels.shape(1); ++i)
         {
-            // Data are stored like this [label, xmin, ymin, xmax, ymax]
+            // Data are stored like this [label, ...]
             const Dtype *data = labels.cpu_data() + labels.offset(i);
             // If the label is -1, there are no more bounding boxes
             if (data[0] == Dtype(-1.0f)) return i;
@@ -54,7 +51,7 @@ namespace {
 }
 
 template <typename Dtype>
-BBTXTDataLayer<Dtype>::BBTXTDataLayer (const LayerParameter &param)
+BB3TXTDataLayer<Dtype>::BB3TXTDataLayer (const LayerParameter &param)
     : BasePrefetchingDataLayer<Dtype>(param),
       InternalThreadpool(std::max(int(boost::thread::hardware_concurrency()/2), 1))
 {
@@ -62,7 +59,7 @@ BBTXTDataLayer<Dtype>::BBTXTDataLayer (const LayerParameter &param)
 
 
 template <typename Dtype>
-BBTXTDataLayer<Dtype>::~BBTXTDataLayer<Dtype> ()
+BB3TXTDataLayer<Dtype>::~BB3TXTDataLayer<Dtype> ()
 {
     this->StopInternalThreadpool();
     this->StopInternalThread();
@@ -70,7 +67,7 @@ BBTXTDataLayer<Dtype>::~BBTXTDataLayer<Dtype> ()
 
 
 template <typename Dtype>
-void BBTXTDataLayer<Dtype>::DataLayerSetUp (const vector<Blob<Dtype>*> &bottom,
+void BB3TXTDataLayer<Dtype>::DataLayerSetUp (const vector<Blob<Dtype>*> &bottom,
                                             const vector<Blob<Dtype>*> &top)
 {
     CHECK(this->layer_param_.has_bbtxt_param()) << "BBTXTParam is mandatory!";
@@ -85,7 +82,7 @@ void BBTXTDataLayer<Dtype>::DataLayerSetUp (const vector<Blob<Dtype>*> &bottom,
     this->_rng.reset(new Caffe::RNG(caffe_rng_rand()));
 
     // Load the BBTXT file with 2D bounding box annotations
-    this->_loadBBTXTFile();
+    this->_loadBB3TXTFile();
     this->_i_global     = 0;
     this->_bb_id_global = 0;
 
@@ -105,7 +102,7 @@ void BBTXTDataLayer<Dtype>::DataLayerSetUp (const vector<Blob<Dtype>*> &bottom,
     top[0]->Reshape(top_shape);
 
     // Label blob
-    std::vector<int> label_shape = {batch_size, MAX_NUM_BBS_PER_IMAGE, 5};
+    std::vector<int> label_shape = {batch_size, MAX_NUM_BBS_PER_IMAGE, 12};
     this->transformed_label_.Reshape(label_shape);  // For prefetching
     top[1]->Reshape(label_shape);
 
@@ -123,7 +120,7 @@ void BBTXTDataLayer<Dtype>::DataLayerSetUp (const vector<Blob<Dtype>*> &bottom,
 
 
 template <typename Dtype>
-void BBTXTDataLayer<Dtype>::load_batch (Batch<Dtype> *batch)
+void BB3TXTDataLayer<Dtype>::load_batch (Batch<Dtype> *batch)
 {
     // This function is called on a prefetch thread
 
@@ -145,7 +142,7 @@ void BBTXTDataLayer<Dtype>::load_batch (Batch<Dtype> *batch)
 
 
 template <typename Dtype>
-void BBTXTDataLayer<Dtype>::InternalThreadpoolEntry (int t)
+void BB3TXTDataLayer<Dtype>::InternalThreadpoolEntry (int t)
 {
     // This method runs on each thread of the internal threadpool
 
@@ -188,12 +185,12 @@ void BBTXTDataLayer<Dtype>::InternalThreadpoolEntry (int t)
 // -----------------------------------------  PROTECTED METHODS  ----------------------------------------- //
 
 template <typename Dtype>
-void BBTXTDataLayer<Dtype>::_loadBBTXTFile ()
+void BB3TXTDataLayer<Dtype>::_loadBB3TXTFile ()
 {
     const std::string& source = this->layer_param_.image_data_param().source();
 
     std::ifstream infile(source.c_str(), std::ios::in);
-    CHECK(infile.is_open()) << "BBTXT file '" << source << "' could not be opened!";
+    CHECK(infile.is_open()) << "BB3TXT file '" << source << "' could not be opened!";
 
     std::string line;
     std::vector<std::string> data;
@@ -203,9 +200,10 @@ void BBTXTDataLayer<Dtype>::_loadBBTXTFile ()
     // Read the whole file and create entries in the _images for all images
     while (std::getline(infile, line))
     {
-        // Split the line - entries separated by space [filename label confidence xmin ymin xmax ymax]
+        // Split the line - entries separated by space:
+        // [filename label confidence fblx fbly fbrx fbry rblx rbly ftly]
         boost::split(data, line, boost::is_any_of(" "));
-        CHECK_EQ(data.size(), 7) << "Line '" << line << "' corrupted!";
+        CHECK_EQ(data.size(), 14) << "Line '" << line << "' corrupted!";
 
         if (current_filename != data[0])
         {
@@ -215,15 +213,15 @@ void BBTXTDataLayer<Dtype>::_loadBBTXTFile ()
                 // Finalize the last annotation - we put -1 as next bounding box label to signalize
                 // the end - this is because each image can have a different number of bounding boxes
                 int offset = this->_images.back().second->offset(i);
-                Dtype* bb_position = this->_images.back().second->mutable_cpu_data() + offset;
-                bb_position[0] = Dtype(-1.0f);
+                Dtype* bb3_position = this->_images.back().second->mutable_cpu_data() + offset;
+                bb3_position[0] = Dtype(-1.0f);
             }
 
             CHECK(boost::filesystem::exists(data[0])) << "File '" << data[0] << "' not found!";
 
             // Create new image entry
             this->_images.push_back(std::make_pair(data[0],
-                                        std::make_shared<Blob<Dtype>>(MAX_NUM_BBS_PER_IMAGE, 5, 1, 1)));
+                                        std::make_shared<Blob<Dtype>>(MAX_NUM_BBS_PER_IMAGE, 12, 1, 1)));
             i = 0;
             current_filename = data[0];
         }
@@ -232,12 +230,11 @@ void BBTXTDataLayer<Dtype>::_loadBBTXTFile ()
         if (i < MAX_NUM_BBS_PER_IMAGE)
         {
             int offset = this->_images.back().second->offset(i);
-            Dtype* bb_position = this->_images.back().second->mutable_cpu_data() + offset;
-            bb_position[0] = Dtype(std::stof(data[1])); // label
-            bb_position[1] = Dtype(std::stof(data[3])); // xmin
-            bb_position[2] = Dtype(std::stof(data[4])); // ymin
-            bb_position[3] = Dtype(std::stof(data[5])); // xmax
-            bb_position[4] = Dtype(std::stof(data[6])); // ymax
+            Dtype* bb3_position = this->_images.back().second->mutable_cpu_data() + offset;
+
+            bb3_position[0] = Dtype(std::stof(data[1])); // label
+            // xmin, ymin, xmax, ymax, fblx, fbly, fbrx, fbry, rblx, rbly, ftly
+            for (int p = 1; p < 12; ++p) bb3_position[p] = Dtype(std::stof(data[p+2]));
             i++;
         }
         else
@@ -250,14 +247,14 @@ void BBTXTDataLayer<Dtype>::_loadBBTXTFile ()
     if (i < MAX_NUM_BBS_PER_IMAGE)
     {
         int offset = this->_images.back().second->offset(i);
-        Dtype* bb_position = this->_images.back().second->mutable_cpu_data() + offset;
-        bb_position[0] = Dtype(-1.0f);
+        Dtype* bb3_position = this->_images.back().second->mutable_cpu_data() + offset;
+        bb3_position[0] = Dtype(-1.0f);
     }
 }
 
 
 template <typename Dtype>
-void BBTXTDataLayer<Dtype>::_shuffleImages ()
+void BB3TXTDataLayer<Dtype>::_shuffleImages ()
 {
     caffe::rng_t* prefetch_rng = static_cast<caffe::rng_t*>(_rng->generator());
     shuffle(this->_images.begin(), this->_images.end(), prefetch_rng);
@@ -265,7 +262,7 @@ void BBTXTDataLayer<Dtype>::_shuffleImages ()
 
 
 template <typename Dtype>
-void BBTXTDataLayer<Dtype>::_cropAndTransform (const cv::Mat &cv_img, int b, int bb_id)
+void BB3TXTDataLayer<Dtype>::_cropAndTransform (const cv::Mat &cv_img, int b, int bb_id)
 {
     CHECK_EQ(cv_img.channels(), 3) << "Image must have 3 color channels";
 
@@ -283,7 +280,7 @@ void BBTXTDataLayer<Dtype>::_cropAndTransform (const cv::Mat &cv_img, int b, int
 
 
 template <typename Dtype>
-void BBTXTDataLayer<Dtype>::_cropBBFromImage (const cv::Mat &cv_img, cv::Mat &cv_img_cropped_out,
+void BB3TXTDataLayer<Dtype>::_cropBBFromImage (const cv::Mat &cv_img, cv::Mat &cv_img_cropped_out,
                                               int b, int bb_id)
 {
     // Input dimensions of the network
@@ -349,16 +346,23 @@ void BBTXTDataLayer<Dtype>::_cropBBFromImage (const cv::Mat &cv_img, cv::Mat &cv
     Dtype y_scaling   = float(height) / crop_height;
     for (int i = 0; i < MAX_NUM_BBS_PER_IMAGE; ++i)
     {
-        // Data are stored like this [label, xmin, ymin, xmax, ymax]
+        // Data are stored like this [label, xmin, ymin, xmax, ymax, fblx, fbly, fbrx, fbry, rblx, rbly, ftly]
         Dtype *data = this->transformed_label_.mutable_cpu_data() + this->transformed_label_.offset(b, i);
 
         if (data[0] == Dtype(-1.0f)) break;
 
         // Align with x, y of the crop and scale
-        data[1] = (data[1]-crop_x) * x_scaling;
-        data[2] = (data[2]-crop_y) * y_scaling;
-        data[3] = (data[3]-crop_x) * x_scaling;
-        data[4] = (data[4]-crop_y) * y_scaling;
+        data[1]  = (data[1]-crop_x) * x_scaling; // xmin
+        data[2]  = (data[2]-crop_y) * y_scaling; // ymin
+        data[3]  = (data[3]-crop_x) * x_scaling; // xmax
+        data[4]  = (data[4]-crop_y) * y_scaling; // ymax
+        data[5]  = (data[5]-crop_x) * x_scaling; // fblx
+        data[6]  = (data[6]-crop_y) * y_scaling; // fbly
+        data[7]  = (data[7]-crop_x) * x_scaling; // fbrx
+        data[8]  = (data[8]-crop_y) * y_scaling; // fbry
+        data[9]  = (data[9]-crop_x) * x_scaling; // rblx
+        data[10] = (data[10]-crop_y) * y_scaling; // rbly
+        data[11] = (data[11]-crop_y) * y_scaling; // ftly
 
 //        cv::rectangle(cv_img_cropped_out, cv::Rect(data[1], data[2], data[3]-data[1], data[4]-data[2]), cv::Scalar(0,0,255), 2);
     }
@@ -368,7 +372,7 @@ void BBTXTDataLayer<Dtype>::_cropBBFromImage (const cv::Mat &cv_img, cv::Mat &cv
 
 
 template <typename Dtype>
-void BBTXTDataLayer<Dtype>::_applyPixelTransformationsAndCopyOut (const cv::Mat &cv_img_cropped, int b)
+void BB3TXTDataLayer<Dtype>::_applyPixelTransformationsAndCopyOut (const cv::Mat &cv_img_cropped, int b)
 {
     const int width  = cv_img_cropped.cols;
     const int height = cv_img_cropped.rows;
@@ -436,7 +440,7 @@ void BBTXTDataLayer<Dtype>::_applyPixelTransformationsAndCopyOut (const cv::Mat 
 
 
 template <typename Dtype>
-SelectedBB<Dtype> BBTXTDataLayer<Dtype>::_getImageAndBB ()
+SelectedBB<Dtype> BB3TXTDataLayer<Dtype>::_getImageAndBB()
 {
     std::lock_guard<std::mutex> lock(this->_i_global_mtx);
 
@@ -480,8 +484,8 @@ SelectedBB<Dtype> BBTXTDataLayer<Dtype>::_getImageAndBB ()
 
 // ----------------------------------------  LAYER INSTANTIATION  ---------------------------------------- //
 
-INSTANTIATE_CLASS(BBTXTDataLayer);
-REGISTER_LAYER_CLASS(BBTXTData);
+INSTANTIATE_CLASS(BB3TXTDataLayer);
+REGISTER_LAYER_CLASS(BB3TXTData);
 
 
 }  // namespace caffe
