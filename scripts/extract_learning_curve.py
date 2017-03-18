@@ -106,13 +106,14 @@ class LearningCurvePlotter(object):
 		print('-- Done processing log')
 
 
-	def plot_and_save(self, path_out, skip):
+	def plot_and_save(self, path_out, skip, ylimit):
 		"""
 		Saves the plot to PDF and CSV.
 
 		Input:
-			path_out: Path to the output file(s) (without extension)\
+			path_out: Path to the output file(s) (without extension)
 			skip:     Skip N iterations in the beginning in the plot
+			ylimit:   Max value on the y axis - clip it (or None)
 		"""
 		self._initialize_plot()
 
@@ -132,6 +133,11 @@ class LearningCurvePlotter(object):
 
 		plt.plot(self.iters_train[si_train:], self.losses_train[si_train:], label='training', color='#3399FF')
 		plt.plot(self.iters_valid[si_valid:], self.losses_valid[si_valid:], label='validation', color='#FF3300')
+
+		# Limit axes
+		xmin, xmax, ymin, ymax = plt.axis()
+		ymax = ymax if ylimit is None else ylimit
+		plt.axis((xmin, xmax, 0, ymax))
 
 		plt.legend()
 
@@ -189,6 +195,8 @@ def parse_arguments():
 	parser.add_argument('--skip', type=int, default=0,
 						help='Skip first N iterations in the plot - this is to avoid large values '\
 						'on the y axis in the plot')
+	parser.add_argument('--ylimit', type=float, default=None,
+						help='Clip the y axis on this value')
 
 	args = parser.parse_args()
 
@@ -204,7 +212,7 @@ def main():
 
 	plotter = LearningCurvePlotter(args.path_log, args.title)
 
-	plotter.plot_and_save(args.path_out, args.skip)
+	plotter.plot_and_save(args.path_out, args.skip, args.ylimit)
 
 
 if __name__ == '__main__':
