@@ -1,0 +1,15 @@
+macc3d_0.25_r2_x4
+r2 c0.25
+conv k3      o64
+conv k3      o64
+pool
+conv k3      o128
+conv k3  d2  o128
+conv k3      o128
+pool
+conv k3      o256
+conv k3  d1  o256
+conv k3  d3  o256
+conv k3  d5  o256
+conv k3      o256
+macc x4
