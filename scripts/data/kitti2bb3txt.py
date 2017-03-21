@@ -145,7 +145,7 @@ def flip_3D_bb(x, image_width):
 	# First flip the x coordinates of the points
 	x[0,:] = image_width - x[0,:]
 
-	# Now switch left and right points\
+	# Now switch left and right points
 	x_out = np.matrix(np.copy(x))
 	x_out[:,0] = x[:,2]
 	x_out[:,1] = x[:,3]

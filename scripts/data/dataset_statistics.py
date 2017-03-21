@@ -85,12 +85,15 @@ class DatasetStats(object):
 
 		
 		print('-- Category: ' + category)
-		print('Number of bboxes: %d'%(len(widths)))
-		print('Width:  from %.1f to %.1f (median: %1.f)'%(widths[0], widths[-1], np.median(widths)))
-		# print(str(widths[:5]) + ' ... ' + str(widths[-5:]))
-		print('Height: from %.1f to %.1f (median: %1.f)'%(heights[0], heights[-1], np.median(heights)))
-		# print(str(heights[:5]) + ' ... ' + str(heights[-5:]))
-		print('--')
+		if len(widths) == 0:
+			print('Category not present in the dataset')
+		else:
+			print('Number of bboxes: %d'%(len(widths)))
+			print('Width:  from %.1f to %.1f (median: %1.f)'%(widths[0], widths[-1], np.median(widths)))
+			# print(str(widths[:5]) + ' ... ' + str(widths[-5:]))
+			print('Height: from %.1f to %.1f (median: %1.f)'%(heights[0], heights[-1], np.median(heights)))
+			# print(str(heights[:5]) + ' ... ' + str(heights[-5:]))
+			print('--')
 
 
 
