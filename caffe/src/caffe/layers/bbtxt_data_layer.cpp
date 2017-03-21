@@ -274,6 +274,7 @@ void BBTXTDataLayer<Dtype>::_cropAndTransform (const cv::Mat &cv_img, int b, int
     this->_cropBBFromImage(cv_img, cv_img_cropped, b, bb_id);
 
     // Mirror
+    this->_flipImage(cv_img_cropped, b);
 
     // Rotate
 
@@ -432,6 +433,36 @@ void BBTXTDataLayer<Dtype>::_applyPixelTransformationsAndCopyOut (const cv::Mat 
 //    cv::Mat img_u; img.convertTo(img_u, CV_8UC3);
 //    static int imi = 0;
 //    cv::imwrite("transfromed" + std::to_string(imi++) + ".png", img_u);
+}
+
+
+template <typename Dtype>
+void BBTXTDataLayer<Dtype>::_flipImage(cv::Mat &cv_img_cropped, int b)
+{
+    if (this->phase_ == TEST) return;
+
+    caffe::rng_t* rng  = static_cast<caffe::rng_t*>(this->_rng->generator());
+    boost::random::uniform_int_distribution<> dist(0, 1);
+
+    if (dist(*rng) == 1)
+    {
+        // Flip the image
+        cv::flip(cv_img_cropped, cv_img_cropped, 1);
+
+        // Flip the annotations
+        const Dtype width = Dtype(cv_img_cropped.cols);
+        for (int i = 0; i < MAX_NUM_BBS_PER_IMAGE; ++i)
+        {
+            // Data are stored like this [label, xmin, ymin, xmax, ymax]
+            Dtype *data = this->transformed_label_.mutable_cpu_data() + this->transformed_label_.offset(b, i);
+
+            if (data[0] == Dtype(-1.0f)) break;
+
+            Dtype temp = data[1];
+            data[1]  = width - data[3]; // xmax -> xmin
+            data[3]  = width - temp;    // xmin -> xmax
+        }
+    }
 }
 
 

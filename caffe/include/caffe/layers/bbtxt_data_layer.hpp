@@ -117,6 +117,13 @@ protected:
     virtual void _applyPixelTransformationsAndCopyOut (const cv::Mat &cv_img_cropped, int b);
 
     /**
+     * @brief Randomly flips the image during training
+     * @param cv_img_cropped Already cropped and rescaled image
+     * @param b Id of image in the batch (for output blobs)
+     */
+    virtual void _flipImage(cv::Mat &cv_img_cropped, int b);
+
+    /**
      * @brief Thread safe selecting of image filename and id of bounding box in that image
      * Operates on _i_global and _bb_id_global
      * @param b Id of image in the batch (for output blobs)

@@ -271,6 +271,7 @@ void BB3TXTDataLayer<Dtype>::_cropAndTransform (const cv::Mat &cv_img, int b, in
     this->_cropBBFromImage(cv_img, cv_img_cropped, b, bb_id);
 
     // Mirror
+    // We cannot do it here because we do not have all the needed coordinates - we have to do it externaly
 
     // Rotate
 

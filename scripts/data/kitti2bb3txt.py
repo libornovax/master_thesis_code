@@ -132,7 +132,115 @@ def extract_3D_bb(data, P):
 	return x
 
 
-def translate_file(path_labels, path_images, outfile, label):
+def flip_3D_bb(x, image_width):
+	"""
+	Flips the annotation of the image around y axis.
+
+	Input:
+		x:           coordinates of points fbr, rbr, fbl, rbl, ftr, rtr, ftl, rtl
+		image_width: width of the flipped image
+	Return:
+		x - flipped coordinates
+	"""
+	# First flip the x coordinates of the points
+	x[0,:] = image_width - x[0,:]
+
+	# Now switch left and right points\
+	x_out = np.matrix(np.copy(x))
+	x_out[:,0] = x[:,2]
+	x_out[:,1] = x[:,3]
+	x_out[:,2] = x[:,0]
+	x_out[:,3] = x[:,1]
+	x_out[:,4] = x[:,6]
+	x_out[:,5] = x[:,7]
+	x_out[:,6] = x[:,4]
+	x_out[:,7] = x[:,5]
+
+	return x_out
+
+
+def process_image(path_image, path_label_file, path_calib_file, label, flip, outfile):
+	"""
+	Processes one image from the dataset and writes it out to the outfile.
+
+	Input:
+		path_image:      Path to the image file
+		path_label_file: Path to the label file with KITTI labels
+		path_calib_file: Path to the calibration file for this image
+		label:           Which class label should be extracted from the dataset (default None)
+		flip:            True/False whether the images should also be flipped by this script
+		outfile:         File handle of the open output BBTXT file
+	"""
+
+	if flip:
+		# We have to flip the image and save it
+		image = cv2.imread(path_image)
+		image = cv2.flip(image, 1)
+
+		image_width = image.shape[1]
+
+		filename   = os.path.basename(path_image)
+		directory  = os.path.dirname(path_image).rstrip('/') + '_flip'
+		path_image = os.path.join(directory, filename)
+
+		if not os.path.exists(directory): os.makedirs(directory)
+
+		cv2.imwrite(path_image, image)
+
+
+	with open(path_label_file, 'r') as infile_label, open(path_calib_file, 'r') as infile_calib:
+		# Read camera calibration matrices
+		for line in infile_calib:
+			if line[:2] == 'P2':
+				P = read_camera_matrix(line.rstrip('\n'))
+
+		# Read the objects
+		for line in infile_label:
+			line = line.rstrip('\n')
+			data = line.split(' ')
+			
+			# First element of the data is the label. We don't want to process 'Misc' and
+			# 'DontCare' labels
+			if data[0] == 'Misc' or data[0] == 'DontCare': continue
+
+			# Check label, if required
+			if label is not None and MAPPING[LABELS[data[0]]] != label: continue
+
+
+			# Extract image coordinates (positions) of 3D bounding box corners, the corners are
+			# in the following order: fbr, rbr, fbl, rbl, ftr, rtr, ftl, rtl
+			x = extract_3D_bb(data, P)
+
+			if flip:
+				x = flip_3D_bb(x, image_width)
+
+			min_uv = np.min(x, axis=1)  # xmin, ymin
+			max_uv = np.max(x, axis=1)  # xmax, ymax
+
+			# The size of an image in KITTI is 1250x375. If the bounding box is significantly
+			# larger, discard it - probably just some large distortion from camera
+			if max_uv[1,0]-min_uv[1,0] > 700 or max_uv[0,0]-min_uv[0,0] > 1500:
+				continue
+
+
+			line_out = path_image + ' '
+			line_out += str(LABELS[data[0]]) + ' '
+			# For confidence we put one - just to have something
+			line_out += '1 '
+			# 3D bounding box is specified by the image coordinates of the front bottom left and
+			# right corners, rear bottom left corner and y coordinate of the front top left
+			# corner
+			line_out += str(min_uv[0,0]) + ' ' + str(min_uv[1,0]) + ' ' \
+					  + str(max_uv[0,0]) + ' ' + str(max_uv[1,0]) + ' ' \
+					  + str(x[0,2]) + ' ' + str(x[1,2]) + ' ' + str(x[0,0]) + ' ' \
+			 	      + str(x[1,0]) + ' ' + str(x[0,3]) + ' ' + str(x[1,3]) + ' ' \
+			 	      + str(x[1,6]) + '\n'
+
+			outfile.write(line_out)
+
+
+
+def translate_file(path_labels, path_images, outfile, label, flip):
 	"""
 	Runs the translation of the KITTI 3d bounding box label format into the BB3TXT format.
 
@@ -141,6 +249,7 @@ def translate_file(path_labels, path_images, outfile, label):
 		path_images: Path to the "image_2" folder with images from the KITTI dataset
 		outfile:     File handle of the open output BBTXT file
 		label:       Which class label should be extracted from the dataset (default None)
+		flip:        True/False whether the images should also be flipped by this script
 	"""
 	print('-- TRANSLATING KITTI TO BB3TXT')
 
@@ -164,53 +273,11 @@ def translate_file(path_labels, path_images, outfile, label):
 		if not os.path.isfile(path_image):
 			print('WARNING: Image "%s" does not exist!'%(path_image))
 
+		process_image(path_image, path_label_file, path_calib_file, label, False, outfile)
+		if flip:
+			# Add also the flipped image
+			process_image(path_image, path_label_file, path_calib_file, label, True, outfile)
 
-		with open(path_label_file, 'r') as infile_label, open(path_calib_file, 'r') as infile_calib:
-			# Read camera calibration matrices
-			for line in infile_calib:
-				if line[:2] == 'P2':
-					P = read_camera_matrix(line.rstrip('\n'))
-
-			# Read the objects
-			for line in infile_label:
-				line = line.rstrip('\n')
-				data = line.split(' ')
-				
-				# First element of the data is the label. We don't want to process 'Misc' and
-				# 'DontCare' labels
-				if data[0] == 'Misc' or data[0] == 'DontCare': continue
-
-				# Check label, if required
-				if label is not None and MAPPING[LABELS[data[0]]] != label: continue
-
-
-				# Extract image coordinates (positions) of 3D bounding box corners, the corners are
-				# in the following order: fbr, rbr, fbl, rbl, ftr, rtr, ftl, rtl
-				x = extract_3D_bb(data, P)
-
-				min_uv = np.min(x, axis=1)  # xmin, ymin
-				max_uv = np.max(x, axis=1)  # xmax, ymax
-
-				# The size of an image in KITTI is 1250x375. If the bounding box is significantly
-				# larger, discard it - probably just some large distortion from camera
-				if max_uv[1,0]-min_uv[1,0] > 700 or max_uv[0,0]-min_uv[0,0] > 1500:
-					continue
-
-
-				line_out = path_image + ' '
-				line_out += str(LABELS[data[0]]) + ' '
-				# For confidence we put one - just to have something
-				line_out += '1 '
-				# 3D bounding box is specified by the image coordinates of the front bottom left and
-				# right corners, rear bottom left corner and y coordinate of the front top left
-				# corner
-				line_out += str(min_uv[0,0]) + ' ' + str(min_uv[1,0]) + ' ' \
-						  + str(max_uv[0,0]) + ' ' + str(max_uv[1,0]) + ' ' \
-						  + str(x[0,2]) + ' ' + str(x[1,2]) + ' ' + str(x[0,0]) + ' ' \
-				 	      + str(x[1,0]) + ' ' + str(x[0,3]) + ' ' + str(x[1,3]) + ' ' \
-				 	      + str(x[1,6]) + '\n'
-
-				outfile.write(line_out)
 
 	print('-- TRANSLATION DONE')
 
@@ -233,6 +300,8 @@ def parse_arguments():
 	parser.add_argument('--label', metavar='label', type=str, default=None,
 						help='Single class of objects that should be separated from the dataset. ' \
 							 'One from ' + str(available_categories(MAPPING)))
+	parser.add_argument('--flip', dest='flip', action='store_true', default=False,
+		                help='If provided, the images will also be flipped')
 
 	args = parser.parse_args()
 
@@ -253,7 +322,7 @@ def parse_arguments():
 
 def main():
 	args = parse_arguments()
-	translate_file(args.path_labels, args.path_images, args.outfile, args.label)
+	translate_file(args.path_labels, args.path_images, args.outfile, args.label, args.flip)
 
 	args.outfile.close()
 
