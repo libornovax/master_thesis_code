@@ -4,7 +4,6 @@
 //
 // Tests object detection of 2D bounding boxes a single scale detector on an image pyramid. It outputs BBTXT.
 //
-// Optionaly it can apply non-maxima suppression (merging) on bounding boxes.
 //
 
 #include <caffe/caffe.hpp>
@@ -26,6 +25,17 @@
 namespace po = boost::program_options;
 
 
+//#define BASIC_NON_MAXIMA_SUPPRESSION
+
+#ifdef BASIC_NON_MAXIMA_SUPPRESSION
+    // Maximum intersection over union of two boxes that will be both kept after NMS
+    #define IOU_THRESHOLD 0.5
+#else
+    // Maximum similariry of two bounding boxes that will be both kept
+    #define SIMILARITY_THRESHOLD 0.65
+#endif
+
+
 namespace {
 
     struct BB2D
@@ -40,7 +50,21 @@ namespace {
               ymin(ymin),
               xmax(xmax),
               ymax(ymax)
-        {}
+        {
+            // Check ordder of min and max
+            if (this->xmin > this->xmax)
+            {
+                double temp = this->xmin;
+                this->xmin = this->xmax;
+                this->xmax = temp;
+            }
+            if (this->ymin > this->ymax)
+            {
+                double temp = this->ymin;
+                this->ymin = this->ymax;
+                this->ymax = temp;
+            }
+        }
 
         std::string path_image;
         int label;
@@ -51,6 +75,56 @@ namespace {
         double ymax;
     };
 
+
+    /**
+     * @brief Compute intersection over union of 2 bounding boxes
+     * @return Intersection over union
+     */
+    double iou (const BB2D &bb1, const BB2D &bb2)
+    {
+        double iw = std::max(0.0, std::min(bb1.xmax, bb2.xmax) - std::max(bb1.xmin, bb2.xmin));
+        double ih = std::max(0.0, std::min(bb1.ymax, bb2.ymax) - std::max(bb1.ymin, bb2.ymin));
+
+        double area1 = (bb1.xmax-bb1.xmin) * (bb1.ymax-bb1.ymin);
+        double area2 = (bb2.xmax-bb2.xmin) * (bb2.ymax-bb2.ymin);
+        double iarea = iw * ih;
+
+        return iarea / (area1+area2 - iarea);
+    }
+
+
+    /**
+     * @brief Combines 2 bounding boxes into one
+     * @param bb1
+     * @param bb2
+     * @return Merged bounding box
+     */
+    BB2D merge_bbs (const BB2D &bb1, const BB2D &bb2)
+    {
+        BB2D bb;
+        bb.path_image = bb1.path_image;
+        bb.label      = bb1.label;
+//        bb.conf       = std::max(bb1.conf, bb2.conf);
+        bb.conf       = bb1.conf + bb2.conf;
+        bb.xmin       = (bb1.conf*bb1.xmin + bb2.conf*bb2.xmin) / (bb1.conf+bb2.conf);
+        bb.ymin       = (bb1.conf*bb1.ymin + bb2.conf*bb2.ymin) / (bb1.conf+bb2.conf);
+        bb.xmax       = (bb1.conf*bb1.xmax + bb2.conf*bb2.xmax) / (bb1.conf+bb2.conf);
+        bb.ymax       = (bb1.conf*bb1.ymax + bb2.conf*bb2.ymax) / (bb1.conf+bb2.conf);
+
+        return bb;
+    }
+
+
+    /**
+     * @brief Similarity measure of 2 bounding boxes
+     * @param bb1
+     * @param bb2
+     * @return Similarity (the more similar bbs, the larger)
+     */
+    double similarity (const BB2D &bb1, const BB2D &bb2)
+    {
+        return iou(bb1, bb2);
+    }
 }
 
 
@@ -154,6 +228,82 @@ std::vector<BB2D> detectObjects (const std::string &path_image, const cv::Mat &i
 }
 
 
+std::vector<BB2D> nonMaximaSuppression (std::vector<BB2D> &bbs)
+{
+#ifdef BASIC_NON_MAXIMA_SUPPRESSION
+    // This is standard non-maxima suppression, where we throw away boxes, which have a higher intersection
+    // over union then given threshold with some other box with a higher confidence
+
+    // Sort by confidence in the descending order
+    std::sort(bbs.begin(), bbs.end(), [](const BB2D &a, const BB2D &b) { return a.conf > b.conf; });
+
+    std::vector<BB2D> bbs_out;
+    std::vector<bool> active(bbs.size(), true);
+
+    for (int i = 0; i < bbs.size(); ++i)
+    {
+        if (active[i])
+        {
+            active[i] = false;
+            bbs_out.push_back(bbs[i]);
+
+            // Check intersection with all remaining bounding boxes
+            for (int j = i; j < bbs.size(); ++j)
+            {
+                if (active[j] && iou(bbs[i], bbs[j]) > IOU_THRESHOLD)  active[j] = false;
+            }
+        }
+    }
+#else
+    // More sophisticated non-maxima suppression (accordint to the authors of OverFeat), where we merge
+    // simimar boxes instead of throwing them away
+
+    // Compute the matrix of similarities
+    cv::Mat sims(bbs.size(), bbs.size(), CV_64FC1, cv::Scalar(0,0));
+    for (int i = 0; i < bbs.size()-1; ++i)
+    {
+        for (int j = i+1; j < bbs.size(); ++j)  sims.at<double>(i, j) = similarity(bbs[i], bbs[j]);
+    }
+
+    std::vector<bool> active(bbs.size(), true);
+    while (true)
+    {
+        cv::Point mx_loc;
+        double mx;
+        cv::minMaxLoc(sims, 0, &mx, 0, &mx_loc);
+
+        if (mx < SIMILARITY_THRESHOLD) break;
+
+        // Merge the two boxes with the highest similarity
+        bbs[mx_loc.x] = merge_bbs(bbs[mx_loc.x], bbs[mx_loc.y]);
+        // Remove the second box from further computation
+        active[mx_loc.y] = false;
+        for (int j = mx_loc.y; j < bbs.size(); ++j) sims.at<double>(mx_loc.y, j) = 0.0;
+        for (int i = 0; i < mx_loc.y; ++i) sims.at<double>(i, mx_loc.y) = 0.0;
+
+        // Recompute the distances for the new box
+        for (int j = mx_loc.x+1; j < bbs.size(); ++j)
+        {
+            if (active[j]) sims.at<double>(mx_loc.x, j) = similarity(bbs[j], bbs[mx_loc.x]);
+        }
+        for (int i = 0; i < mx_loc.y; ++i)
+        {
+            if (active[i]) sims.at<double>(i, mx_loc.y) = similarity(bbs[i], bbs[mx_loc.x]);
+        }
+    }
+
+    // Copy out the active bounding boxes
+    std::vector<BB2D> bbs_out;
+    for (int i = 0; i < bbs.size(); ++i)
+    {
+        if (active[i]) bbs_out.push_back(bbs[i]);
+    }
+#endif
+
+    return bbs_out;
+}
+
+
 void writeBoundingBoxes (const std::vector<BB2D> &bbs, std::ofstream &fout)
 {
     for (const BB2D &bb: bbs)
@@ -196,6 +346,7 @@ void runPyramidDetection (const std::string &path_prototxt, const std::string &p
 
     std::ofstream fout; fout.open(path_out);
     CHECK(fout) << "Output file '" << path_out << "' could not have been created!";
+    std::ofstream fout_nms; fout_nms.open(path_out.substr(0, path_out.size()-6) + "_nms.bbtxt");
 
 
     // -- RUN THE DETECTOR ON EACH IMAGE -- //
@@ -204,17 +355,22 @@ void runPyramidDetection (const std::string &path_prototxt, const std::string &p
         LOG(INFO) << line;
         CHECK(boost::filesystem::exists(line)) << "Image '" << line << "' not found!";
 
-        // Load the image
+        // Detect bbs on the image
         cv::Mat image = cv::imread(line, CV_LOAD_IMAGE_COLOR);
-
-        // Build the image pyramid and run detection on each scale of the pyramid
         std::vector<BB2D> bbs = detectObjects(line, image, scales, net);
 
-        // Save the bounding boxes to a BBTXT file
+        // Save the bounding boxes before NMS to a BBTXT file
         writeBoundingBoxes(bbs, fout);
+
+        // Non-maxima suppression
+        bbs = nonMaximaSuppression(bbs);
+
+        // Save the bounding boxes after NMS to a BBTXT file
+        writeBoundingBoxes(bbs, fout_nms);
     }
 
     fout.close();
+    fout_nms.close();
 }
 
 
@@ -286,6 +442,12 @@ void parseArguments (int argc, char** argv, ProgramArguments &pa)
         if (boost::filesystem::exists(pa.path_out))
         {
             std::cerr << "ERROR: File '" << pa.path_out << "' already exists!" << std::endl;
+            exit(EXIT_FAILURE);
+        }
+        if (pa.path_out.substr(pa.path_out.size()-6, 6) != ".bbtxt")
+        {
+            std::cerr << "ERROR: BBTXT file is produced on the output. The given output filename does not "
+                      << "match the extension .bbtxt!" << std::endl;
             exit(EXIT_FAILURE);
         }
     }
