@@ -252,11 +252,11 @@ std::vector<BB2D> nonMaximaSuppression (std::vector<BB2D> &bbs)
             {
                 if (active[j] && iou(bbs_out.back(), bbs[j]) > IOU_THRESHOLD)
                 {
-                    bbs_out[bbs_out.size()-1] = merge_bbs(bbs[j], bbs_out[bbs_out.size()-1]);
+//                    bbs_out[bbs_out.size()-1] = merge_bbs(bbs[j], bbs_out[bbs_out.size()-1]);
                     active[j] = false;
 
                     // Restart the checking - the bb changed
-                    j = i;
+//                    j = i;
                 }
             }
         }
