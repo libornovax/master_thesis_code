@@ -327,7 +327,7 @@ void runPyramidDetection (const std::string &path_prototxt, const std::string &p
     // Scaling factor is 1.5
     // Right now the detectors are trained on object size = 80px. I.e. the scale 1.0 will detect objects
     // around that size
-    const std::vector<double> scales = {1.5, 1.0, 0.66, 0.44, 0.29, 0.19};
+    const std::vector<double> scales = {1.0, 0.66, 0.44, 0.29, 0.19};
 
     // Create network and load trained weights from caffemodel file
     auto net = std::make_shared<caffe::Net<float>>(path_prototxt, caffe::TEST);
