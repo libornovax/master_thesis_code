@@ -25,7 +25,7 @@
 namespace po = boost::program_options;
 
 
-//#define BASIC_NON_MAXIMA_SUPPRESSION
+#define BASIC_NON_MAXIMA_SUPPRESSION
 
 #ifdef BASIC_NON_MAXIMA_SUPPRESSION
     // Maximum intersection over union of two boxes that will be both kept after NMS
@@ -250,7 +250,14 @@ std::vector<BB2D> nonMaximaSuppression (std::vector<BB2D> &bbs)
             // Check intersection with all remaining bounding boxes
             for (int j = i; j < bbs.size(); ++j)
             {
-                if (active[j] && iou(bbs[i], bbs[j]) > IOU_THRESHOLD)  active[j] = false;
+                if (active[j] && iou(bbs_out.back(), bbs[j]) > IOU_THRESHOLD)
+                {
+                    bbs_out[bbs_out.size()-1] = merge_bbs(bbs[j], bbs_out[bbs_out.size()-1]);
+                    active[j] = false;
+
+                    // Restart the checking - the bb changed
+                    j = i;
+                }
             }
         }
     }
