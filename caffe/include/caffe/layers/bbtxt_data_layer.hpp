@@ -90,7 +90,7 @@ protected:
     /**
      * @brief Shuffle images in the dataset
      */
-    virtual void _shuffleImages ();
+    virtual void _shuffleBoundingBoxes ();
 
     /**
      * @brief Crops a window from the given image around the given bb and resamples it to the network input blob
@@ -135,9 +135,10 @@ protected:
     // ---------------------------------------  PROTECTED MEMBERS  --------------------------------------- //
     // List of image paths and 2D bounding box annotations in the form of a blob
     std::vector<std::pair<std::string, std::shared_ptr<Blob<Dtype>>>> _images;
+    // Vector with indices of all bounding boxes in the dataset
+    std::vector<std::pair<int, int>> _indices;
     // Indices for loading images
     int _i_global;
-    int _bb_id_global;
     // Random number generator
     shared_ptr<Caffe::RNG> _rng;
 

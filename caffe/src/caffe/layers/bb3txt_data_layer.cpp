@@ -83,17 +83,10 @@ void BB3TXTDataLayer<Dtype>::DataLayerSetUp (const vector<Blob<Dtype>*> &bottom,
 
     // Load the BBTXT file with 2D bounding box annotations
     this->_loadBB3TXTFile();
-    this->_i_global     = 0;
-    this->_bb_id_global = 0;
+    this->_i_global = 0;
 
     CHECK(!this->_images.empty()) << "The given BBTXT file is empty!";
     LOG(INFO) << "There are " << this->_images.size() << " images in the dataset.";
-
-    if (this->layer_param_.image_data_param().shuffle())
-    {
-        // Initialize the random number generator for shuffling and shuffle the images
-        this->_shuffleImages();
-    }
 
 
     // This is the shape of the input blob
@@ -220,8 +213,7 @@ void BB3TXTDataLayer<Dtype>::_loadBB3TXTFile ()
             CHECK(boost::filesystem::exists(data[0])) << "File '" << data[0] << "' not found!";
 
             // Create new image entry
-            this->_images.push_back(std::make_pair(data[0],
-                                        std::make_shared<Blob<Dtype>>(MAX_NUM_BBS_PER_IMAGE, 12, 1, 1)));
+            this->_images.emplace_back(data[0], std::make_shared<Blob<Dtype>>(MAX_NUM_BBS_PER_IMAGE, 12, 1, 1));
             i = 0;
             current_filename = data[0];
         }
@@ -235,6 +227,8 @@ void BB3TXTDataLayer<Dtype>::_loadBB3TXTFile ()
             bb3_position[0] = Dtype(std::stof(data[1])); // label
             // xmin, ymin, xmax, ymax, fblx, fbly, fbrx, fbry, rblx, rbly, ftly
             for (int p = 1; p < 12; ++p) bb3_position[p] = Dtype(std::stof(data[p+2]));
+
+            this->_indices.emplace_back(this->_images.size()-1, i);
             i++;
         }
         else
@@ -254,10 +248,10 @@ void BB3TXTDataLayer<Dtype>::_loadBB3TXTFile ()
 
 
 template <typename Dtype>
-void BB3TXTDataLayer<Dtype>::_shuffleImages ()
+void BB3TXTDataLayer<Dtype>::_shuffleBoundingBoxes ()
 {
     caffe::rng_t* prefetch_rng = static_cast<caffe::rng_t*>(_rng->generator());
-    shuffle(this->_images.begin(), this->_images.end(), prefetch_rng);
+    shuffle(this->_indices.begin(), this->_indices.end(), prefetch_rng);
 }
 
 
@@ -445,39 +439,19 @@ SelectedBB<Dtype> BB3TXTDataLayer<Dtype>::_getImageAndBB()
 {
     std::lock_guard<std::mutex> lock(this->_i_global_mtx);
 
-    // Struct where we will store the selected image filename and original label
+    // Get image and bounding box index
+    auto indices = this->_indices[this->_i_global++];
+
+    if (this->_i_global >= this->_indices.size())
+    {
+        this->_i_global = 0;  // Restart
+        if (this->phase_ == TRAIN) this->_shuffleBoundingBoxes();
+    }
+
     SelectedBB<Dtype> sel;
-    sel.filename = this->_images[this->_i_global].first;
-    sel.label = this->_images[this->_i_global].second;
-
-    if (this->phase_ == TRAIN)
-    {
-        caffe::rng_t* rng = static_cast<caffe::rng_t*>(this->_rng->generator());
-        boost::random::uniform_int_distribution<> dist(0, numBBs(*sel.label)-1);
-        sel.bb_id = dist(*rng);  // Random bounding box id
-
-        this->_i_global++;
-    }
-    else
-    {
-        sel.bb_id = this->_bb_id_global;
-
-        // Test phase - cropping all bounding boxes - move index to the next one in the image
-        this->_bb_id_global++;
-        if (this->_bb_id_global >= numBBs(*sel.label))
-        {
-            // This image has no more bounding boxes, move to the next image
-            this->_bb_id_global = 0;
-            this->_i_global++;
-        }
-    }
-
-    if (this->_i_global >= this->_images.size())
-    {
-        // Restart the counter from the begining
-        if (this->layer_param_.image_data_param().shuffle()) this->_shuffleImages();
-        this->_i_global = 0;
-    }
+    sel.filename = this->_images[indices.first].first;
+    sel.label    = this->_images[indices.first].second;
+    sel.bb_id    = indices.second;
 
     return sel;
 }
