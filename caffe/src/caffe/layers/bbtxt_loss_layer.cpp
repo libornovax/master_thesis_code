@@ -314,7 +314,11 @@ void BBTXTLossLayer<Dtype>::_applyDiffWeights (int b)
 
     const Dtype* data_acc_prob  = this->_accumulator->cpu_data() + this->_accumulator->offset(b, 0);
 //    const Dtype *data_diff_prob = this->_diff->cpu_data() + this->_diff->offset(b, 0);
-    Dtype *data_diff_prob_m     = this->_diff->mutable_cpu_data() + this->_diff->offset(b, 0);
+    std::vector<Dtype*> data_diff_m;
+    for (int c = 0; c < this->_diff->shape(1); ++c)
+    {
+        data_diff_m.push_back(this->_diff->mutable_cpu_data() + this->_diff->offset(b, c));
+    }
 
     // Number of positive pixels (samples) in this accumulator
     const float pn = caffe_cpu_asum(count_channel, data_acc_prob);
@@ -344,7 +348,10 @@ void BBTXTLossLayer<Dtype>::_applyDiffWeights (int b)
         if (*data_acc_prob > Dtype(0.0f))
         {
             // Positive sample
-            *data_diff_prob_m *= pos_diff_weight;
+            for (int c = 0; c < data_diff_m.size(); ++c)
+            {
+                data_diff_m[c][i] *= pos_diff_weight;
+            }
         }
 //        else if (*data_diff_prob_m > HN_THRESH)
 //        {
@@ -357,7 +364,6 @@ void BBTXTLossLayer<Dtype>::_applyDiffWeights (int b)
 //            *data_diff_prob_m *= neg_diff_weight;
 //        }
 
-        data_diff_prob_m++;
         data_acc_prob++;
     }
 }
