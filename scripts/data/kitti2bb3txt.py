@@ -159,7 +159,7 @@ def flip_3D_bb(x, image_width):
 	return x_out
 
 
-def process_image(path_image, path_label_file, path_calib_file, label, flip, outfile):
+def process_image(path_image, path_label_file, path_calib_file, label, flip, filter, outfile):
 	"""
 	Processes one image from the dataset and writes it out to the outfile.
 
@@ -169,13 +169,13 @@ def process_image(path_image, path_label_file, path_calib_file, label, flip, out
 		path_calib_file: Path to the calibration file for this image
 		label:           Which class label should be extracted from the dataset (default None)
 		flip:            True/False whether the images should also be flipped by this script
+		filter:          True/False whether we should filter out very occluded and truncated boxes
 		outfile:         File handle of the open output BBTXT file
 	"""
 
 	if flip:
 		# We have to flip the image and save it
 		image = cv2.imread(path_image)
-		image = cv2.flip(image, 1)
 
 		image_width = image.shape[1]
 
@@ -183,9 +183,11 @@ def process_image(path_image, path_label_file, path_calib_file, label, flip, out
 		directory  = os.path.dirname(path_image).rstrip('/') + '_flip'
 		path_image = os.path.join(directory, filename)
 
-		if not os.path.exists(directory): os.makedirs(directory)
-
-		cv2.imwrite(path_image, image)
+		if not os.path.exists(directory):
+			os.makedirs(directory)
+		if not os.path.exists(path_image):
+			image = cv2.flip(image, 1)
+			cv2.imwrite(path_image, image)
 
 
 	with open(path_label_file, 'r') as infile_label, open(path_calib_file, 'r') as infile_calib:
@@ -206,6 +208,8 @@ def process_image(path_image, path_label_file, path_calib_file, label, flip, out
 			# Check label, if required
 			if label is not None and MAPPING[LABELS[data[0]]] != label: continue
 
+			# We do not want to include objects, which are occluded or truncated too much
+			if filter and (int(data[2]) >= 2 or float(data[1]) > 0.75): continue 
 
 			# Extract image coordinates (positions) of 3D bounding box corners, the corners are
 			# in the following order: fbr, rbr, fbl, rbl, ftr, rtr, ftl, rtl
@@ -240,7 +244,7 @@ def process_image(path_image, path_label_file, path_calib_file, label, flip, out
 
 
 
-def translate_file(path_labels, path_images, outfile, label, flip):
+def translate_file(path_labels, path_images, outfile, label, flip, filter):
 	"""
 	Runs the translation of the KITTI 3d bounding box label format into the BB3TXT format.
 
@@ -250,6 +254,7 @@ def translate_file(path_labels, path_images, outfile, label, flip):
 		outfile:     File handle of the open output BBTXT file
 		label:       Which class label should be extracted from the dataset (default None)
 		flip:        True/False whether the images should also be flipped by this script
+		filter:      True/False whether we should filter out very occluded and truncated boxes
 	"""
 	print('-- TRANSLATING KITTI TO BB3TXT')
 
@@ -273,10 +278,10 @@ def translate_file(path_labels, path_images, outfile, label, flip):
 		if not os.path.isfile(path_image):
 			print('WARNING: Image "%s" does not exist!'%(path_image))
 
-		process_image(path_image, path_label_file, path_calib_file, label, False, outfile)
+		process_image(path_image, path_label_file, path_calib_file, label, False, filter, outfile)
 		if flip:
 			# Add also the flipped image
-			process_image(path_image, path_label_file, path_calib_file, label, True, outfile)
+			process_image(path_image, path_label_file, path_calib_file, label, True, filter, outfile)
 
 
 	print('-- TRANSLATION DONE')
@@ -302,6 +307,9 @@ def parse_arguments():
 							 'One from ' + str(available_categories(MAPPING)))
 	parser.add_argument('--flip', dest='flip', action='store_true', default=False,
 		                help='If provided, the images will also be flipped')
+	parser.add_argument('--filter', dest='filter', action='store_true', default=False,
+		                help='If provided, very occluded and truncated bounding boxes will be ' \
+		                     'filtered out')
 
 	args = parser.parse_args()
 
@@ -322,7 +330,8 @@ def parse_arguments():
 
 def main():
 	args = parse_arguments()
-	translate_file(args.path_labels, args.path_images, args.outfile, args.label, args.flip)
+	translate_file(args.path_labels, args.path_images, args.outfile, args.label, args.flip, 
+		           args.filter)
 
 	args.outfile.close()
 

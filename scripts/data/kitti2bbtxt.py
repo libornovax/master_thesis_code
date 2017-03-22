@@ -191,7 +191,7 @@ def translate_file(path_labels, path_images, difficulty, outfile, filter, label)
 		path_images: Path to the "image_2" folder with images from the KITTI dataset
 		difficulty:  Difficulty of the dataset by KITTI standards (ignores truncation percentage!)
 		outfile:     File handle of the open output BBTXT file
-		filter:      Ratio of h/w above which will bounding boxes be filtered
+		filter:      True/False whether we should filter out very occluded and truncated boxes
 		label:       Which class label should be extracted from the dataset (default None)
 	"""
 	print('-- TRANSLATING KITTI TO BBTXT')
@@ -235,6 +235,9 @@ def translate_file(path_labels, path_images, difficulty, outfile, filter, label)
 				# Check label, if required
 				if label is not None and MAPPING[LABELS[data[0]]] != label: continue
 
+				# We do not want to include objects, which are occluded or truncated too much
+				if filter and (int(data[2]) >= 2 or float(data[1]) > 0.75): continue 
+
 
 				# Extract xmin, ymin, xmax and ymax from the 3D annotation
 				xmin, ymin, xmax, ymax = extract_2D_bb(data, P)
@@ -242,11 +245,6 @@ def translate_file(path_labels, path_images, difficulty, outfile, filter, label)
 
 				# Check the difficulty of this bounding box
 				if not check_label_difficulty(int(data[2]), ymin, ymax, difficulty):
-					continue
-
-				# Check the bounding box h/w ratio - this is because there are some incorrect labels
-				# in the dataset, which just mark one or two columns or so
-				if compute_hw_ratio(xmin, ymin, xmax, ymax) > filter:
 					continue
 
 				# The size of an image in KITTI is 1250x375. If the bounding box is significantly
@@ -283,10 +281,9 @@ def parse_arguments():
 						help='Difficulty by KITTI standards, one of [easy, moderate, hard, all]')
 	parser.add_argument('outfile', metavar='path_outfile', type=argparse.FileType('w'),
 						help='Path to the output BBTXT file (including the extension)')
-	parser.add_argument('--filter', metavar='filter', type=float, default=99999.9,
-						help='Ratio h/w. If provided, the bounding boxes with their h/w above the '\
-							 'provided ratio will be filtered out. This is to filter incorrectly ' \
-							 'labeled objects')
+	parser.add_argument('--filter', dest='filter', action='store_true', default=False,
+		                help='If provided, very occluded and truncated bounding boxes will be ' \
+		                     'filtered out')
 	parser.add_argument('--label', metavar='label', type=str, default=None,
 						help='Single class of objects that should be separated from the dataset. ' \
 							 'One from ' + str(available_categories(MAPPING)))
