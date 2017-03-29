@@ -301,6 +301,10 @@ int BB3TXTLossLayer<Dtype>::_removeNegativeCoordinateDiff (int b)
                 *data_diff_coord = Dtype(0.0f);
                 num_removed++;
             }
+            else
+            {
+                *data_diff_coord *= *data_acc_prob;
+            }
 
             data_acc_prob++;
             data_diff_coord++;
