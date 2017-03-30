@@ -267,6 +267,14 @@ void BBTXTLossLayer<Dtype>::_buildAccumulator (int b)
                 }
             }
         }
+
+        // We want to create Gaussians in the probability accumulator, not just sharp circles
+        if (c == 0)
+        {
+            cv::GaussianBlur(acc, acc, cv::Size(3, 3), 1);
+            double mx; cv::minMaxLoc(acc, 0, &mx);
+            acc *= 1.0 / mx;
+        }
     }
 }
 
@@ -290,6 +298,10 @@ int BBTXTLossLayer<Dtype>::_removeNegativeCoordinateDiff (int b)
             {
                 *data_diff_coord = Dtype(0.0f);
                 num_removed++;
+            }
+            else
+            {
+                *data_diff_coord *= *data_acc_prob;
             }
 
             data_acc_prob++;
@@ -376,13 +388,14 @@ void BBTXTLossLayer<Dtype>::_renderCoordinateCircle (cv::Mat &acc, int x, int y,
     // of each pixel differs based on the pixel position inside of the bounding box
 
     const Dtype DUMMY = 9999.0f;
-    const int radius  = this->layer_param_.accumulator_loss_param().radius();
+    const int radius  = this->layer_param_.accumulator_loss_param().radius() + 1;
     const int x_acc   = x / this->_scale;
     const int y_acc   = y / this->_scale;
 
     // Because I don't want to take care of the plotting of the circle myself, I use the OpenCV function and
     // then replace the values - first create a circle with a dummy value
-    cv::circle(acc, cv::Point(x_acc, y_acc), radius, cv::Scalar(DUMMY), -1);
+    cv::circle(acc, cv::Point(x_acc, y_acc), radius-1, cv::Scalar(DUMMY), -1);
+    cv::GaussianBlur(acc, acc, cv::Size(3, 3), 100);
 
     // Now go through the pixels in the circle's bounding box and if there is the DUMMY value compute
     // the real value
@@ -396,7 +409,7 @@ void BBTXTLossLayer<Dtype>::_renderCoordinateCircle (cv::Mat &acc, int x, int y,
             if (xp >= 0 && xp < acc.cols && yp >= 0 && yp < acc.rows)
             {
                 // Pixel is inside of the accumulator - check if it contains DUMMY
-                if (acc.at<Dtype>(yp, xp) == DUMMY)
+                if (acc.at<Dtype>(yp, xp) > Dtype(DUMMY/100.0f))
                 {
                     // Change its value to the actual value - coordinate relative to the current pixel position
                     // The coordinates are converted to approximately [0,1], i.e. the ideal bounding box has
