@@ -117,6 +117,14 @@ class DetectionBrowser(object):
 			# Next
 			self.cursor = (self.cursor + 1) % len(self.file_list)
 			self._render()
+		if event.key == 'w':
+			# Previous 200
+			self.cursor = (len(self.file_list) + self.cursor - 200) % len(self.file_list)
+			self._render()
+		elif event.key == 'e':
+			# Next 200
+			self.cursor = (self.cursor + 200) % len(self.file_list)
+			self._render()
 		elif event.key == 'up':
 			# Increase confidence threshold
 			self.confidence += 0.05
@@ -156,7 +164,7 @@ class DetectionBrowser(object):
 			self._render_bounding_boxes(self.iml_gt, self.gt_mapping, gt=True)
 		self._render_bounding_boxes(self.iml_detections, self.detections_mapping)
 
-		plt.title('[' + str(self.cursor) + '] ' + self.file_list[self.cursor] + ' (((' + str(self.confidence) + ')))')
+		plt.title('[' + str(self.cursor) + '/' + str(len(self.file_list)) + '] ' + self.file_list[self.cursor] + ' (((' + str(self.confidence) + ')))')
 		plt.axis('off')
 		self.fig.canvas.draw()
 
@@ -208,6 +216,8 @@ class DetectionBrowser(object):
 		print('-- CONTROLS:')
 		print('--     "left key"   previous image')
 		print('--     "right key"  next image')
+		print('--     "w"          jump 200 images backward')
+		print('--     "e"          jump 200 images forward')
 		print('--     "up key"     raise confidence threshold by 0.05')
 		print('--     "down key"   decrease confidence threshold by 0.05')
 		print('--     "q"          quit the program')
