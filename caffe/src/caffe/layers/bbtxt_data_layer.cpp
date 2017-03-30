@@ -310,8 +310,8 @@ void BBTXTDataLayer<Dtype>::_cropBBFromImage (const cv::Mat &cv_img, cv::Mat &cv
     const Dtype h = bb_data[4] - bb_data[2];
 
     const Dtype size      = std::max(w, h);
-    const int crop_width  = double(width) / reference_size * size;
-    const int crop_height = double(height) / reference_size * size;
+    const int crop_width  = std::round(double(width) / reference_size * size);
+    const int crop_height = std::round(double(height) / reference_size * size);
 
     // Select a random position of the crop, but it has to fully contain the bounding box
     int crop_x, crop_y;

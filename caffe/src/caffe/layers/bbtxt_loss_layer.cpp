@@ -273,7 +273,7 @@ void BBTXTLossLayer<Dtype>::_buildAccumulator (int b)
         {
             cv::GaussianBlur(acc, acc, cv::Size(3, 3), 1);
             double mx; cv::minMaxLoc(acc, 0, &mx);
-            acc *= 1.0 / mx;
+            if (mx != 0.0) acc *= 1.0 / mx;
         }
     }
 }
