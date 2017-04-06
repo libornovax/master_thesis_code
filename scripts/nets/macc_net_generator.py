@@ -92,7 +92,8 @@ class MACCNetGenerator(object):
 		self.fov_previous = 1
 		self.fov_prev_downsampling = 1
 		self.accs = []
-		self.min_acc_downsampling = 99999999
+		self.acc_scales = []
+		self.acc_bbs_ideal = []
 
 
 	def generate_prototxt_files(self, path_out):
@@ -361,10 +362,8 @@ class MACCNetGenerator(object):
 
 		# List of accumulators - for the loss layer
 		self.accs.append(name)
-
-		# This has to be stored for the loss layer
-		if self.min_acc_downsampling > scale:
-			self.min_acc_downsampling = scale
+		self.acc_scales.append(scale)
+		self.acc_bbs_ideal.append(bb_ideal)
 
 		return out
 
@@ -380,24 +379,25 @@ class MACCNetGenerator(object):
 		"""
 		Description of the MultiscaleAccumulatorLoss layer.
 		"""
-		out  = ('\n# ' + '-'*45 + ' LOSS ' + '-'*45 + ' #\n'
-				'layer {\n' \
-				'  name: "loss"\n' \
-				'  type: "BB' + ('3' if self.bb_type == 'bb3txt' else '') + 'TXTLoss"\n' \
-				'  bottom: "label"\n')
+		out = '\n# ' + '-'*45 + ' LOSS ' + '-'*45 + ' #\n'
 
-		for acc in self.accs:
-			out += '  bottom: "' + acc + '"\n'
-
-		out += ('  top: "loss"\n' \
-				'  accumulator_loss_param {\n' \
-				'    radius: %d\n'%(self.radius) + \
-				'    downsampling: %d\n'%(self.min_acc_downsampling) + \
-				'    negative_ratio: 50\n' \
-				'    circle_ratio: %f\n'%(self.circle_ratio) + \
-				'    bounds_overlap: -0.5\n' + # Change this back to 0.33 or other for multi-scale!!
-				'  }\n' \
-				'}\n')
+		for i in range(len(self.accs)):
+			out += ('layer {\n' \
+					'  # -----------------------  SCALE 1/%d  (FOV %d x %d)\n'%(self.acc_scales[i], self.last_in_scale_fov[self.acc_scales[i]], self.last_in_scale_fov[self.acc_scales[i]]) + \
+					'  # -----------------------  Ideal bounding box size: %dx%d px\n'%(self.acc_bbs_ideal[i], self.acc_bbs_ideal[i]) + \
+					'  name: "loss_x%d"\n'%(self.acc_scales[i]) + \
+					'  type: "BB' + ('3' if self.bb_type == 'bb3txt' else '') + 'TXTLoss"\n' \
+					'  bottom: "label"\n'
+					'  bottom: "' + self.accs[i] + '"\n'
+					'  top: "loss_x%d"\n'%(self.acc_scales[i]) + \
+					'  accumulator_loss_param {\n' \
+					'    radius: %d\n'%(self.radius) + \
+					'    downsampling: %d\n'%(self.acc_scales[i]) + \
+					'    negative_ratio: 30\n' \
+					'    circle_ratio: %f\n'%(self.circle_ratio) + \
+					'    bounds_overlap: 0.33\n' + 
+					'  }\n' \
+					'}\n')
 
 		return out
 
@@ -436,7 +436,8 @@ class MACCNetGenerator(object):
 				'  bbtxt_param {\n' \
 				'    width: 256\n' \
 				'    height: 128\n' \
-				'    reference_size: 80\n' \
+				'    reference_size_min: 60\n' \
+				'    reference_size_max: 120\n' \
 				'  }\n' \
 				'}\n')
 
