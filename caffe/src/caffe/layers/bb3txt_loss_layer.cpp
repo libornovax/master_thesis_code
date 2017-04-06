@@ -75,8 +75,10 @@ void BB3TXTLossLayer<Dtype>::Forward_cpu (const vector<Blob<Dtype>*> &bottom, co
 {
     const int batch_size = bottom[1]->shape(0);
 
-    this->_loss_prob  = Dtype(0.0f);
-    this->_loss_coord = Dtype(0.0f);
+    this->_loss_prob      = Dtype(0.0f);
+    this->_loss_prob_pos  = Dtype(0.0f);
+    this->_loss_prob_neg  = Dtype(0.0f);
+    this->_loss_coord     = Dtype(0.0f);
 
     this->_num_processed.reset();
 
@@ -94,10 +96,12 @@ void BB3TXTLossLayer<Dtype>::Forward_cpu (const vector<Blob<Dtype>*> &bottom, co
     // Loss per pixel
     Dtype loss = (this->_loss_prob/batch_size + this->_loss_coord/batch_size) / Dtype(2.0f);
 
-    std::cout << "loss_prob_x" << this->layer_param_.accumulator_loss_param().downsampling()
-              << ": " << (this->_loss_prob / batch_size)
-              << ", loss_coord_x" << this->layer_param_.accumulator_loss_param().downsampling()
-              << ": " << (this->_loss_coord / batch_size) << std::endl;
+    const int ds = this->layer_param_.accumulator_loss_param().downsampling();
+    std::cout << std::fixed << std::showpoint << std::setprecision(6)
+              << "loss_prob_pos_x" << ds << ": \t" << (this->_loss_prob_pos / batch_size) << ", \t"
+              << "loss_prob_neg_x" << ds << ": \t" << (this->_loss_prob_neg / batch_size) << ", \t"
+              << "loss_prob_x" << ds << ": \t" << (this->_loss_prob / batch_size) << ", \t"
+              << "loss_coord_x" << ds << ": \t" << (this->_loss_coord / batch_size) << std::endl;
 
     top[0]->mutable_cpu_data()[0] = loss;
 }
@@ -157,14 +161,12 @@ void BB3TXTLossLayer<Dtype>::InternalThreadpoolEntry (int t)
 
 
             // Loss from the probability accumulator (channel 0)
-            const Dtype *data_prob = this->_diff->cpu_data() + this->_diff->offset(b, 0);
-            Dtype loss_prob = caffe_cpu_dot(count_channel, data_prob, data_prob);
+            this->_computeProbabilityLoss(b);
             // Loss from the coordinates (channels 1-7)
             const Dtype *data_coord = this->_diff->cpu_data() + this->_diff->offset(b, 1);
             Dtype loss_coord = caffe_cpu_dot(7*count_channel, data_coord, data_coord);
 
             // Loss per pixel
-            this->_loss_prob  = this->_loss_prob  + loss_prob  / count_channel;
             if (num_removed_coords != 7*count_channel)
             {
                 this->_loss_coord = this->_loss_coord + loss_coord / (7*count_channel - num_removed_coords);
@@ -322,6 +324,41 @@ int BB3TXTLossLayer<Dtype>::_removeNegativeCoordinateDiff (int b)
     }
 
     return num_removed;
+}
+
+
+template <typename Dtype>
+void BB3TXTLossLayer<Dtype>::_computeProbabilityLoss (int b)
+{
+    const int count_channel = this->_bottom->shape(2) * this->_bottom->shape(3);
+
+    int num_pos    = 0;
+    Dtype loss_neg = Dtype(0.0f);
+    Dtype loss_pos = Dtype(0.0f);
+
+    const Dtype *data_acc_prob  = this->_accumulator->cpu_data() + this->_accumulator->offset(b, 0);
+    const Dtype *data_diff_prob = this->_diff->cpu_data() + this->_diff->offset(b, 0);
+    for (int i = 0; i < count_channel; ++i)
+    {
+        if (*data_acc_prob == Dtype(0.0f))
+        {
+            // Negative sample
+            loss_neg += (*data_diff_prob) * (*data_diff_prob);
+        }
+        else
+        {
+            // Positive sample
+            loss_pos += (*data_diff_prob) * (*data_diff_prob);
+            num_pos++;
+        }
+
+        data_acc_prob++;
+        data_diff_prob++;
+    }
+
+    this->_loss_prob = this->_loss_prob + (loss_pos+loss_neg) / count_channel;
+    this->_loss_prob_pos = this->_loss_prob_pos + loss_pos / (num_pos > 0 ? num_pos : 1);
+    this->_loss_prob_neg = this->_loss_prob_neg + loss_neg / (count_channel-num_pos);
 }
 
 

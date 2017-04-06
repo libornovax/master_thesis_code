@@ -81,6 +81,12 @@ protected:
     virtual int _removeNegativeCoordinateDiff (int b);
 
     /**
+     * @brief Computes the squared error of the probability channel
+     * @param b Id of image in the batch
+     */
+    virtual void _computeProbabilityLoss (int b);
+
+    /**
      * @brief Weights the diffs in order to even out the impact of positive and negative samples on the gradient
      * @param b Id of image in the batch
      */
@@ -119,6 +125,8 @@ protected:
     BlockingCounter _num_processed;
 
     std::atomic<Dtype> _loss_prob;
+    std::atomic<Dtype> _loss_prob_pos;
+    std::atomic<Dtype> _loss_prob_neg;
     std::atomic<Dtype> _loss_coord;
 
 };
