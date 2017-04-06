@@ -405,24 +405,36 @@ void BBTXTLossLayer<Dtype>::_applyDiffWeights (int b)
 
     for (int i = 0; i < count_channel; ++i)
     {
-        if (*data_acc_prob > Dtype(0.0f))
+        if (pn == 0)
         {
-            // Positive sample
+            // If there is no positive blob, then we want to ignore gradients from this accumulator durning
+            // backpropagation
             for (int c = 0; c < data_diff_m.size(); ++c)
             {
-                data_diff_m[c][i] *= pos_diff_weight;
+                data_diff_m[c][i] = Dtype(0.0f);
             }
         }
-//        else if (*data_diff_prob_m > HN_THRESH)
-//        {
-//            // Hard negative sample
-//            *data_diff_prob_m *= hneg_diff_weight;
-//        }
-//        else
-//        {
-//            // Other negative samples
-//            *data_diff_prob_m *= neg_diff_weight;
-//        }
+        else
+        {
+            if (*data_acc_prob > Dtype(0.0f))
+            {
+                // Positive sample
+                for (int c = 0; c < data_diff_m.size(); ++c)
+                {
+                    data_diff_m[c][i] *= pos_diff_weight;
+                }
+            }
+//            else if (*data_diff_prob_m > HN_THRESH)
+//            {
+//                // Hard negative sample
+//                *data_diff_prob_m *= hneg_diff_weight;
+//            }
+//            else
+//            {
+//                // Other negative samples
+//                *data_diff_prob_m *= neg_diff_weight;
+//            }
+        }
 
         data_acc_prob++;
     }
