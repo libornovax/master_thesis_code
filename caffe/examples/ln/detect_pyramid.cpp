@@ -56,7 +56,8 @@ void runPyramidDetection (const std::string &path_prototxt, const std::string &p
     caffe::Caffe::set_mode(caffe::Caffe::GPU);
 #endif
 
-    const std::vector<double> scales = {2.25, 1.5, 1.0, 0.66, 0.44, 0.29};
+//    const std::vector<double> scales = { 2.25, 1.5, 1.0, 0.66, 0.44, 0.29 };
+    const std::vector<double> scales = { 1.0 };
 
     // Create network and load trained weights from caffemodel file
     auto net = std::make_shared<caffe::Net<float>>(path_prototxt, caffe::TEST);
@@ -111,92 +112,95 @@ void runPyramidDetection (const std::string &path_prototxt, const std::string &p
 
 
             // Show the result
-            caffe::Blob<float>* output = net->output_blobs()[0];
-            float *data_output = output->mutable_cpu_data();
-
-            cv::Mat acc_prob(output->shape(2), output->shape(3), CV_32FC1, data_output+output->offset(0, 0));
-
-            if (output->shape(1) == 5)
+            for (caffe::Blob<float>* output: net->output_blobs())
             {
-                // 2D bounding box
-                cv::Mat acc_xmin(output->shape(2), output->shape(3), CV_32FC1, data_output+output->offset(0, 1));
-                cv::Mat acc_ymin(output->shape(2), output->shape(3), CV_32FC1, data_output+output->offset(0, 2));
-                cv::Mat acc_xmax(output->shape(2), output->shape(3), CV_32FC1, data_output+output->offset(0, 3));
-                cv::Mat acc_ymax(output->shape(2), output->shape(3), CV_32FC1, data_output+output->offset(0, 4));
+//                caffe::Blob<float>* output = net->output_blobs()[0];
+                float *data_output = output->mutable_cpu_data();
 
-                double mx;
-                cv::minMaxLoc(acc_prob, 0, &mx);
-                std::cout << mx << std::endl;
+                cv::Mat acc_prob(output->shape(2), output->shape(3), CV_32FC1, data_output+output->offset(0, 0));
 
-                cv::imshow("Accumulator " + net->blob_names()[net->output_blob_indices()[0]] + " (" + std::to_string(s) + ")", acc_prob);
-
-                // Draw detected boxes
-                for (int i = 0; i < acc_prob.rows; ++i)
+                if (output->shape(1) == 5)
                 {
-                    for (int j = 0; j < acc_prob.cols; ++j)
+                    // 2D bounding box
+                    cv::Mat acc_xmin(output->shape(2), output->shape(3), CV_32FC1, data_output+output->offset(0, 1));
+                    cv::Mat acc_ymin(output->shape(2), output->shape(3), CV_32FC1, data_output+output->offset(0, 2));
+                    cv::Mat acc_xmax(output->shape(2), output->shape(3), CV_32FC1, data_output+output->offset(0, 3));
+                    cv::Mat acc_ymax(output->shape(2), output->shape(3), CV_32FC1, data_output+output->offset(0, 4));
+
+                    double mx;
+                    cv::minMaxLoc(acc_prob, 0, &mx);
+                    std::cout << mx << std::endl;
+
+                    cv::imshow("Accumulator " + net->blob_names()[net->output_blob_indices()[0]] + " (" + std::to_string(s) + ")", acc_prob);
+
+                    // Draw detected boxes
+                    for (int i = 0; i < acc_prob.rows; ++i)
                     {
-                        float conf = acc_prob.at<float>(i, j);
-                        if (conf >= 0.7)
+                        for (int j = 0; j < acc_prob.cols; ++j)
                         {
-                            int xmin = (4*j + (80*(acc_xmin.at<float>(i, j) - 0.5))) / s;
-                            int ymin = (4*i + (80*(acc_ymin.at<float>(i, j) - 0.5))) / s;
-                            int xmax = (4*j + (80*(acc_xmax.at<float>(i, j) - 0.5))) / s;
-                            int ymax = (4*i + (80*(acc_ymax.at<float>(i, j) - 0.5))) / s;
-
-                            std::cout << acc_xmin.at<float>(i, j) << " " << acc_ymin.at<float>(i, j) << " " << acc_xmax.at<float>(i, j) << " " << acc_ymax.at<float>(i, j) << std::endl;
-
-                            if (xmin >= xmax || ymin >= ymax)
+                            float conf = acc_prob.at<float>(i, j);
+                            if (conf >= 0.7)
                             {
-                                // This does not make sense
-                                std::cout << "WARNING: Coordinates do not make sense! [" << xmin << "," << ymin << "," << xmax << "," << ymax << "]" << std::endl;
-                                continue;
-                            }
+                                int xmin = acc_xmin.at<float>(i, j) / s;
+                                int ymin = acc_ymin.at<float>(i, j) / s;
+                                int xmax = acc_xmax.at<float>(i, j) / s;
+                                int ymax = acc_ymax.at<float>(i, j) / s;
 
-                            cv::rectangle(image, cv::Rect(xmin, ymin, xmax-xmin, ymax-ymin), cv::Scalar(0,0,255));
-                            cv::circle(image, cv::Point(4*j/s, 4*i/s), 2, cv::Scalar(0,255,0), -1);
+                                std::cout << acc_xmin.at<float>(i, j) << " " << acc_ymin.at<float>(i, j) << " " << acc_xmax.at<float>(i, j) << " " << acc_ymax.at<float>(i, j) << std::endl;
+
+                                if (xmin >= xmax || ymin >= ymax)
+                                {
+                                    // This does not make sense
+                                    std::cout << "WARNING: Coordinates do not make sense! [" << xmin << "," << ymin << "," << xmax << "," << ymax << "]" << std::endl;
+                                    continue;
+                                }
+
+                                cv::rectangle(image, cv::Rect(xmin, ymin, xmax-xmin, ymax-ymin), cv::Scalar(0,0,255));
+                                cv::circle(image, cv::Point(4*j/s, 4*i/s), 2, cv::Scalar(0,255,0), -1);
+                            }
                         }
                     }
                 }
-            }
-            else if (output->shape(1) == 8)
-            {
-                // 3D bounding box
-                // fblx, fbly, fbrx, fbry, rblx, rbly, ftly
-                cv::Mat acc_fblx(output->shape(2), output->shape(3), CV_32FC1, data_output+output->offset(0, 1));
-                cv::Mat acc_fbly(output->shape(2), output->shape(3), CV_32FC1, data_output+output->offset(0, 2));
-                cv::Mat acc_fbrx(output->shape(2), output->shape(3), CV_32FC1, data_output+output->offset(0, 3));
-                cv::Mat acc_fbry(output->shape(2), output->shape(3), CV_32FC1, data_output+output->offset(0, 4));
-                cv::Mat acc_rblx(output->shape(2), output->shape(3), CV_32FC1, data_output+output->offset(0, 5));
-                cv::Mat acc_rbly(output->shape(2), output->shape(3), CV_32FC1, data_output+output->offset(0, 6));
-                cv::Mat acc_ftly(output->shape(2), output->shape(3), CV_32FC1, data_output+output->offset(0, 7));
-
-                double mx;
-                cv::minMaxLoc(acc_prob, 0, &mx);
-                std::cout << mx << std::endl;
-
-                cv::imshow("Accumulator " + net->blob_names()[net->output_blob_indices()[0]] + " (" + std::to_string(s) + ")", acc_prob);
-
-                // Draw detected 3D boxes
-                for (int i = 0; i < acc_prob.rows; ++i)
+                else if (output->shape(1) == 8)
                 {
-                    for (int j = 0; j < acc_prob.cols; ++j)
+                    // 3D bounding box
+                    // fblx, fbly, fbrx, fbry, rblx, rbly, ftly
+                    cv::Mat acc_fblx(output->shape(2), output->shape(3), CV_32FC1, data_output+output->offset(0, 1));
+                    cv::Mat acc_fbly(output->shape(2), output->shape(3), CV_32FC1, data_output+output->offset(0, 2));
+                    cv::Mat acc_fbrx(output->shape(2), output->shape(3), CV_32FC1, data_output+output->offset(0, 3));
+                    cv::Mat acc_fbry(output->shape(2), output->shape(3), CV_32FC1, data_output+output->offset(0, 4));
+                    cv::Mat acc_rblx(output->shape(2), output->shape(3), CV_32FC1, data_output+output->offset(0, 5));
+                    cv::Mat acc_rbly(output->shape(2), output->shape(3), CV_32FC1, data_output+output->offset(0, 6));
+                    cv::Mat acc_ftly(output->shape(2), output->shape(3), CV_32FC1, data_output+output->offset(0, 7));
+
+                    double mx;
+                    cv::minMaxLoc(acc_prob, 0, &mx);
+                    std::cout << mx << std::endl;
+
+                    cv::imshow("Accumulator " + net->blob_names()[net->output_blob_indices()[0]] + " (" + std::to_string(s) + ")", acc_prob);
+
+                    // Draw detected 3D boxes
+                    for (int i = 0; i < acc_prob.rows; ++i)
                     {
-                        float conf = acc_prob.at<float>(i, j);
-                        if (conf >= 0.7)
+                        for (int j = 0; j < acc_prob.cols; ++j)
                         {
-                            int fblx = (4*j + (80*(acc_fblx.at<float>(i, j) - 0.5))) / s;
-                            int fbly = (4*i + (80*(acc_fbly.at<float>(i, j) - 0.5))) / s;
-                            int fbrx = (4*j + (80*(acc_fbrx.at<float>(i, j) - 0.5))) / s;
-                            int fbry = (4*i + (80*(acc_fbry.at<float>(i, j) - 0.5))) / s;
-                            int rblx = (4*j + (80*(acc_rblx.at<float>(i, j) - 0.5))) / s;
-                            int rbly = (4*i + (80*(acc_rbly.at<float>(i, j) - 0.5))) / s;
-                            int ftly = (4*i + (80*(acc_ftly.at<float>(i, j) - 0.5))) / s;
+                            float conf = acc_prob.at<float>(i, j);
+                            if (conf >= 0.7)
+                            {
+                                int fblx = acc_fblx.at<float>(i, j) / s;
+                                int fbly = acc_fbly.at<float>(i, j) / s;
+                                int fbrx = acc_fbrx.at<float>(i, j) / s;
+                                int fbry = acc_fbry.at<float>(i, j) / s;
+                                int rblx = acc_rblx.at<float>(i, j) / s;
+                                int rbly = acc_rbly.at<float>(i, j) / s;
+                                int ftly = acc_ftly.at<float>(i, j) / s;
 
-                            cv::line(image, cv::Point(fblx, fbly), cv::Point(fbrx, fbry), cv::Scalar(0, 0, 255));
-                            cv::line(image, cv::Point(fblx, fbly), cv::Point(fblx, ftly), cv::Scalar(0, 0, 255));
-                            cv::line(image, cv::Point(fblx, fbly), cv::Point(rblx, rbly), cv::Scalar(0, 255, 0));
+                                cv::line(image, cv::Point(fblx, fbly), cv::Point(fbrx, fbry), cv::Scalar(0, 0, 255));
+                                cv::line(image, cv::Point(fblx, fbly), cv::Point(fblx, ftly), cv::Scalar(0, 0, 255));
+                                cv::line(image, cv::Point(fblx, fbly), cv::Point(rblx, rbly), cv::Scalar(0, 255, 0));
 
-                            cv::circle(image, cv::Point(4*j/s, 4*i/s), 2, cv::Scalar(0,255,0), -1);
+                                cv::circle(image, cv::Point(4*j/s, 4*i/s), 2, cv::Scalar(0,255,0), -1);
+                            }
                         }
                     }
                 }

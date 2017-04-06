@@ -72,13 +72,13 @@ void extract3DBoundingBoxes (caffe::Blob<float> *output, const std::string &path
             float conf = acc_prob.at<float>(i, j);
             if (conf >= 0.1)
             {
-                int fblx = (4*j + (80*(acc_fblx.at<float>(i, j) - 0.5))) / scale;
-                int fbly = (4*i + (80*(acc_fbly.at<float>(i, j) - 0.5))) / scale;
-                int fbrx = (4*j + (80*(acc_fbrx.at<float>(i, j) - 0.5))) / scale;
-                int fbry = (4*i + (80*(acc_fbry.at<float>(i, j) - 0.5))) / scale;
-                int rblx = (4*j + (80*(acc_rblx.at<float>(i, j) - 0.5))) / scale;
-                int rbly = (4*i + (80*(acc_rbly.at<float>(i, j) - 0.5))) / scale;
-                int ftly = (4*i + (80*(acc_ftly.at<float>(i, j) - 0.5))) / scale;
+                int fblx = acc_fblx.at<float>(i, j) / scale;
+                int fbly = acc_fbly.at<float>(i, j) / scale;
+                int fbrx = acc_fbrx.at<float>(i, j) / scale;
+                int fbry = acc_fbry.at<float>(i, j) / scale;
+                int rblx = acc_rblx.at<float>(i, j) / scale;
+                int rbly = acc_rbly.at<float>(i, j) / scale;
+                int ftly = acc_ftly.at<float>(i, j) / scale;
 
                 // The line of a BB3TXT file is:
                 // filename label confidence xmin ymin xmax ymax fblx fbly fbrx fbry rblx rbly ftly
@@ -102,18 +102,17 @@ void runPyramidDetection (const std::string &path_prototxt, const std::string &p
     // Scaling factor is 1.5
     // Right now the detectors are trained on object size = 80px. I.e. the scale 1.0 will detect objects
     // around that size
-    const std::vector<double> scales = {1.0, 0.66, 0.44, 0.29, 0.19};
+//    const std::vector<double> scales = { 1.0, 0.66, 0.44, 0.29, 0.19 };
+    const std::vector<double> scales = { 1.0 };
 
     // Create network and load trained weights from caffemodel file
     auto net = std::make_shared<caffe::Net<float>>(path_prototxt, caffe::TEST);
     net->CopyTrainedLayersFrom(path_caffemodel);
 
     caffe::Blob<float>* input_layer  = net->input_blobs()[0];
-    caffe::Blob<float>* output_layer = net->output_blobs()[0];
 
     CHECK_EQ(net->num_inputs(), 1) << "Network should have exactly one input.";
     CHECK_EQ(input_layer->shape(1), 3) << "Input layer must have 3 channels.";
-    CHECK_EQ(output_layer->shape(1), 8) << "Unsupported network, only 8 output channels supported!";
 
     // Prepare the input channels
     std::vector<cv::Mat> input_channels;
@@ -160,8 +159,11 @@ void runPyramidDetection (const std::string &path_prototxt, const std::string &p
 
             net->Forward();
 
-            // 3D bounding box
-            extract3DBoundingBoxes(output_layer, line, s, fout);
+            for (caffe::Blob<float>* output: net->output_blobs())
+            {
+                // 3D bounding box
+                extract3DBoundingBoxes(output, line, s, fout);
+            }
         }
     }
 

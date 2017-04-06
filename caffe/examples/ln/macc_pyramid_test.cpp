@@ -173,10 +173,10 @@ std::vector<BB2D> extract2DBoundingBoxes (caffe::Blob<float> *output, const std:
             float conf = acc_prob.at<float>(i, j);
             if (conf >= 0.1)
             {
-                int xmin = (4*j + (80*(acc_xmin.at<float>(i, j) - 0.5))) / scale;
-                int ymin = (4*i + (80*(acc_ymin.at<float>(i, j) - 0.5))) / scale;
-                int xmax = (4*j + (80*(acc_xmax.at<float>(i, j) - 0.5))) / scale;
-                int ymax = (4*i + (80*(acc_ymax.at<float>(i, j) - 0.5))) / scale;
+                int xmin = acc_xmin.at<float>(i, j) / scale;
+                int ymin = acc_ymin.at<float>(i, j) / scale;
+                int xmax = acc_xmax.at<float>(i, j) / scale;
+                int ymax = acc_ymax.at<float>(i, j) / scale;
 
                 bounding_boxes.emplace_back(path_image, 1, conf, xmin, ymin, xmax, ymax);
             }
@@ -194,7 +194,6 @@ std::vector<BB2D> detectObjects (const std::string &path_image, const cv::Mat &i
     std::vector<BB2D> bounding_boxes;
 
     caffe::Blob<float>* input_layer  = net->input_blobs()[0];
-    caffe::Blob<float>* output_layer = net->output_blobs()[0];
 
     std::vector<cv::Mat> input_channels;
 
@@ -220,8 +219,11 @@ std::vector<BB2D> detectObjects (const std::string &path_image, const cv::Mat &i
 
         net->Forward();
 
-        std::vector<BB2D> new_bbs = extract2DBoundingBoxes(output_layer, path_image, s);
-        bounding_boxes.insert(bounding_boxes.end(), new_bbs.begin(), new_bbs.end());
+        for (caffe::Blob<float>* output: net->output_blobs())
+        {
+            std::vector<BB2D> new_bbs = extract2DBoundingBoxes(output, path_image, s);
+            bounding_boxes.insert(bounding_boxes.end(), new_bbs.begin(), new_bbs.end());
+        }
     }
 
     return bounding_boxes;
@@ -334,7 +336,8 @@ void runPyramidDetection (const std::string &path_prototxt, const std::string &p
     // Scaling factor is 1.5
     // Right now the detectors are trained on object size = 80px. I.e. the scale 1.0 will detect objects
     // around that size
-    const std::vector<double> scales = {1.0, 0.66, 0.44, 0.29, 0.19};
+//    const std::vector<double> scales = { 1.0, 0.66, 0.44, 0.29, 0.19 };
+    const std::vector<double> scales = { 1.0 };
 
     // Create network and load trained weights from caffemodel file
     auto net = std::make_shared<caffe::Net<float>>(path_prototxt, caffe::TEST);
