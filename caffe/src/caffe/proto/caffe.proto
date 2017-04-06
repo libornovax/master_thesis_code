@@ -449,9 +449,10 @@ message BBTXTParameter {
   // or cropped - net input dimensions
   optional int32 width = 1;
   optional int32 height = 2;
-  // This is for SINGLE-SCALE TRAINING! What is the size of bounding box for
-  // which we are training (in pixels, longer side)
-  optional int32 reference_size = 3;
+  // What is the size of bounding box for which we are training (in pixels,
+  // longer side) interval [min, max] from which we will be randomly selecting
+  optional int32 reference_size_min = 3;
+  optional int32 reference_size_max = 4;
 }
 
 // Message that stores parameters used to apply transformation

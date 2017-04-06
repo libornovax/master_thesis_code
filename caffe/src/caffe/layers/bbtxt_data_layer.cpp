@@ -11,6 +11,7 @@
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
+#include <boost/random/uniform_real_distribution.hpp>
 
 #include "caffe/layers/bbtxt_data_layer.hpp"
 #include "caffe/util/benchmark.hpp"
@@ -76,7 +77,10 @@ void BBTXTDataLayer<Dtype>::DataLayerSetUp (const vector<Blob<Dtype>*> &bottom,
     CHECK(this->layer_param_.has_bbtxt_param()) << "BBTXTParam is mandatory!";
     CHECK(this->layer_param_.bbtxt_param().has_height()) << "Height must be set!";
     CHECK(this->layer_param_.bbtxt_param().has_width()) << "Width must be set!";
-    CHECK(this->layer_param_.bbtxt_param().has_reference_size()) << "Reference size must be set!";
+    CHECK(this->layer_param_.bbtxt_param().has_reference_size_min()) << "Min reference size must be set!";
+    CHECK(this->layer_param_.bbtxt_param().has_reference_size_max()) << "Max reference size must be set!";
+    CHECK_LT(this->layer_param_.bbtxt_param().reference_size_min(),
+             this->layer_param_.bbtxt_param().reference_size_max()) << "Min reference must be lower than max";
 
     const int height     = this->layer_param_.bbtxt_param().height();
     const int width      = this->layer_param_.bbtxt_param().width();
@@ -288,18 +292,11 @@ void BBTXTDataLayer<Dtype>::_cropBBFromImage (const cv::Mat &cv_img, cv::Mat &cv
                                               int b, int bb_id)
 {
     // Input dimensions of the network
-    const int height   = this->layer_param_.bbtxt_param().height();
-    const int width    = this->layer_param_.bbtxt_param().width();
-    // This is the size of the bounding box that is detected by this network
-    int reference_size = this->layer_param_.bbtxt_param().reference_size();
-    caffe::rng_t* rng  = static_cast<caffe::rng_t*>(this->_rng->generator());
-
-    if (this->phase_ == TRAIN)
-    {
-        // Vary the reference bounding box size a bit, i.e. the size of the object when it is cropped
-        boost::random::uniform_int_distribution<> dists(-reference_size/10, reference_size/5);
-        reference_size += dists(*rng);
-    }
+    const int height             = this->layer_param_.bbtxt_param().height();
+    const int width              = this->layer_param_.bbtxt_param().width();
+    const int reference_size_min = this->layer_param_.bbtxt_param().reference_size_min();
+    const int reference_size_max = this->layer_param_.bbtxt_param().reference_size_max();
+    caffe::rng_t* rng            = static_cast<caffe::rng_t*>(this->_rng->generator());
 
 
     // Get dimensions of the bounding box - format [label, xmin, ymin, xmax, ymax]
@@ -308,6 +305,32 @@ void BBTXTDataLayer<Dtype>::_cropBBFromImage (const cv::Mat &cv_img, cv::Mat &cv
     const Dtype y = bb_data[2];
     const Dtype w = bb_data[3] - bb_data[1];
     const Dtype h = bb_data[4] - bb_data[2];
+
+    int reference_size;
+    if (this->phase_ == TRAIN)
+    {
+        // Vary the reference bounding box size a bit, i.e. the size of the object when it is cropped
+
+        // IMPORTANT! We need larger values to be less probable than small - because an accumulator, which
+        // detects larger objects spans across more "integer" sizes. For example accumulator x2 can detect
+        // bbs in [25,60], then x4 detects bbs from [50,120], which has double the size of the interval. The
+        // random distribution needs to be augmented accordingly - we will project the bb sizes to log space
+        double rsl_min = std::log(double(reference_size_min));
+        double rsl_max = std::log(double(reference_size_max));
+
+        boost::random::uniform_real_distribution<double> dists(0.0, 1.0);
+        reference_size = std::round(std::exp(rsl_min + (dists(*rng) * (rsl_max-rsl_min))));
+
+        std::cout << "rs: " << reference_size << std::endl;
+    }
+    else
+    {
+        // Testing phase - keep the original size
+        reference_size = std::max(w, h);
+
+        if (reference_size < reference_size_min) reference_size = reference_size_min;
+        if (reference_size > reference_size_max) reference_size = reference_size_max;
+    }
 
     const Dtype size      = std::max(w, h);
     const int crop_width  = std::round(double(width) / reference_size * size);

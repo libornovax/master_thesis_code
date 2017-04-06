@@ -93,7 +93,10 @@ void BBTXTLossLayer<Dtype>::Forward_cpu (const vector<Blob<Dtype>*> &bottom, con
     // Loss per pixel
     Dtype loss = (this->_loss_prob/batch_size + this->_loss_coord/batch_size) / Dtype(2.0f);
 
-    std::cout << "loss_prob: " << (this->_loss_prob / batch_size) << ", loss_coord: " << (this->_loss_coord / batch_size) << std::endl;
+    std::cout << "loss_prob_x" << this->layer_param_.accumulator_loss_param().downsampling()
+              << ": " << (this->_loss_prob / batch_size)
+              << ", loss_coord_x" << this->layer_param_.accumulator_loss_param().downsampling()
+              << ": " << (this->_loss_coord / batch_size) << std::endl;
 
     top[0]->mutable_cpu_data()[0] = loss;
 }
@@ -104,12 +107,19 @@ void BBTXTLossLayer<Dtype>::Backward_cpu (const vector<Blob<Dtype>*> &top,
                                                           const vector<bool> &propagate_down,
                                                           const vector<Blob<Dtype>*> &bottom)
 {
+    Dtype downsampling = this->layer_param_.accumulator_loss_param().downsampling();
+
     // Fill in the diff (gradient) for each output blob
     if (propagate_down[1])
     {
         // Scale the gradient - they scale it everywhere with batch size (bottom[i]->shape(0)), I don't know
         // why but lets do it as well
-        const Dtype alpha = top[0]->cpu_diff()[0] / bottom[1]->shape(0);
+        //
+        // IMPORTANT! Since in fully convolutional network the gradients are accumulated, NOT averaged!, we
+        // have scale the gradient according to the number of pixels in the output accumulator. The reference
+        // number of pixels is given by the x1 accumulator
+        const Dtype alpha = top[0]->cpu_diff()[0] / bottom[1]->shape(0) * downsampling*downsampling;
+
         caffe_cpu_axpby(bottom[1]->count(), alpha, this->_diff->cpu_data(), Dtype(0.0f),
                         bottom[1]->mutable_cpu_diff());
     }
