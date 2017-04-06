@@ -26,6 +26,42 @@
 namespace po = boost::program_options;
 
 
+
+namespace {
+
+    struct BB3D
+    {
+        BB3D () {}
+        BB3D (const std::string &path_image, int label, double conf, double fblx, double fbly, double fbrx,
+              double fbry, double rblx, double rbly, double ftly)
+            : path_image(path_image),
+              label(label),
+              conf(conf),
+              fblx(fblx),
+              fbly(fbly),
+              fbrx(fbrx),
+              fbry(fbry),
+              rblx(rblx),
+              rbly(rbly),
+              ftly(ftly)
+        {
+        }
+
+        std::string path_image;
+        int label;
+        double conf;
+        double fblx;
+        double fbly;
+        double fbrx;
+        double fbry;
+        double rblx;
+        double rbly;
+        double ftly;
+    };
+
+}
+
+
 /**
  * @brief Wraps the input layer into a vector of cv::Mat so we could assign data to it more easily
  * @param input_layer Pointer to the net input layer blob
@@ -49,9 +85,11 @@ void wrapInputLayer (caffe::Blob<float>* input_layer, std::vector<cv::Mat> &out_
 }
 
 
-void extract3DBoundingBoxes (caffe::Blob<float> *output, const std::string &path_image, double scale,
-                             std::ofstream &fout)
+std::vector<BB3D> extract3DBoundingBoxes (caffe::Blob<float> *output, const std::string &path_image,
+                                          double scale)
 {
+    std::vector<BB3D> bounding_boxes;
+
     float *data_output = output->mutable_cpu_data();
 
     // 3D bounding box
@@ -80,14 +118,75 @@ void extract3DBoundingBoxes (caffe::Blob<float> *output, const std::string &path
                 int rbly = acc_rbly.at<float>(i, j) / scale;
                 int ftly = acc_ftly.at<float>(i, j) / scale;
 
-                // The line of a BB3TXT file is:
-                // filename label confidence xmin ymin xmax ymax fblx fbly fbrx fbry rblx rbly ftly
-                fout << path_image << " 1 " << conf << " 0 0 0 0 " << fblx << " " << fbly << " " << fbrx
-                     << " " << fbry << " " << rblx << " " << rbly << " " << ftly << std::endl;
+                bounding_boxes.emplace_back(path_image, 1, conf, fblx, fbly, fbrx, fbry, rblx, rbly, ftly);
             }
         }
     }
+
+    return bounding_boxes;
 }
+
+
+std::vector<BB3D> detectObjects (const std::string &path_image, const cv::Mat &image,
+                                 const std::vector<double> &scales,
+                                 const std::shared_ptr<caffe::Net<float>> &net)
+{
+    std::vector<BB3D> bounding_boxes;
+
+    caffe::Blob<float>* input_layer  = net->input_blobs()[0];
+
+    std::vector<cv::Mat> input_channels;
+
+    // Convert to zero mean and unit variance
+    cv::Mat imagef; image.convertTo(imagef, CV_32FC3);
+    imagef -= cv::Scalar(128.0f, 128.0f, 128.0f);
+    imagef *= 1.0f/128.0f;
+
+    // Build the image pyramid and run detection on each scale of the pyramid
+    for (double s: scales)
+    {
+        cv::Mat imagef_scaled;
+        cv::resize(imagef, imagef_scaled, cv::Size(), s, s);
+
+        // Reshape the network
+        input_layer->Reshape(1, input_layer->shape(1), imagef_scaled.rows, imagef_scaled.cols);
+        net->Reshape();
+
+        // Prepare the cv::Mats for input
+        wrapInputLayer(input_layer, input_channels);
+        // Copy the image to the input layer of the network
+        cv::split(imagef_scaled, input_channels);
+
+        net->Forward();
+
+        for (caffe::Blob<float>* output: net->output_blobs())
+        {
+            std::vector<BB3D> new_bbs = extract3DBoundingBoxes(output, path_image, s);
+            bounding_boxes.insert(bounding_boxes.end(), new_bbs.begin(), new_bbs.end());
+        }
+    }
+
+    return bounding_boxes;
+}
+
+
+//std::vector<BB3D> nonMaximaSuppression (std::vector<BB3D> &bbs)
+//{
+//    return bbs;
+//}
+
+
+void writeBoundingBoxes (const std::vector<BB3D> &bbs, std::ofstream &fout)
+{
+    for (const BB3D &bb: bbs)
+    {
+        // The line of a BB3TXT file is:
+        // filename label confidence xmin ymin xmax ymax fblx fbly fbrx fbry rblx rbly ftly
+        fout << bb.path_image << " 1 " << bb.conf << " 0 0 0 0 " << bb.fblx << " " << bb.fbly << " "
+             << bb.fbrx << " " << bb.fbry << " " << bb.rblx << " " << bb.rbly << " " << bb.ftly << std::endl;
+    }
+}
+
 
 
 void runPyramidDetection (const std::string &path_prototxt, const std::string &path_caffemodel,
@@ -108,9 +207,11 @@ void runPyramidDetection (const std::string &path_prototxt, const std::string &p
     net->CopyTrainedLayersFrom(path_caffemodel);
 
     caffe::Blob<float>* input_layer  = net->input_blobs()[0];
+    caffe::Blob<float>* output_layer = net->output_blobs()[0];
 
     CHECK_EQ(net->num_inputs(), 1) << "Network should have exactly one input.";
     CHECK_EQ(input_layer->shape(1), 3) << "Input layer must have 3 channels.";
+    CHECK_EQ(output_layer->shape(1), 8) << "Unsupported network, only 8 channels!";
 
     // Prepare the input channels
     std::vector<cv::Mat> input_channels;
@@ -122,7 +223,7 @@ void runPyramidDetection (const std::string &path_prototxt, const std::string &p
 
     std::ofstream fout; fout.open(path_out);
     CHECK(fout) << "Output file '" << path_out << "' could not have been created!";
-
+//    std::ofstream fout_nms; fout_nms.open(path_out.substr(0, path_out.size()-6) + "_nms.bbtxt");
 
     // -- RUN THE DETECTOR ON EACH IMAGE -- //
     while (std::getline(infile, line))
@@ -130,44 +231,23 @@ void runPyramidDetection (const std::string &path_prototxt, const std::string &p
         LOG(INFO) << line;
         CHECK(boost::filesystem::exists(line)) << "Image '" << line << "' not found!";
 
-        // Load the image
+        // Detect bbs on the image
         cv::Mat image = cv::imread(line, CV_LOAD_IMAGE_COLOR);
-        cv::Mat imagef; image.convertTo(imagef, CV_32FC3);
+        std::vector<BB3D> bbs = detectObjects(line, image, scales, net);
 
-        // Convert to zero mean and unit variance
-        imagef -= cv::Scalar(128.0f, 128.0f, 128.0f);
-        imagef *= 1.0f/128.0f;
+        // Save the bounding boxes before NMS to a BBTXT file
+        writeBoundingBoxes(bbs, fout);
 
-        // Build the image pyramid and run detection on each scale of the pyramid
-        for (double s: scales)
-        {
-            cv::Mat imagef_scaled; cv::resize(imagef, imagef_scaled, cv::Size(), s, s);
+//        // Non-maxima suppression
+//        bbs = nonMaximaSuppression(bbs);
 
-            if (imagef_scaled.rows != input_layer->shape(2) || imagef_scaled.cols != input_layer->shape(3))
-            {
-                // Reshape the network
-                input_layer->Reshape(1, input_layer->shape(1), imagef_scaled.rows, imagef_scaled.cols);
-                net->Reshape();
-
-                wrapInputLayer(input_layer, input_channels);
-            }
-
-            // Copy the image to the input layer of the network
-            cv::split(imagef_scaled, input_channels);
-
-            net->Forward();
-
-            for (caffe::Blob<float>* output: net->output_blobs())
-            {
-                // 3D bounding box
-                extract3DBoundingBoxes(output, line, s, fout);
-            }
-        }
+//        // Save the bounding boxes after NMS to a BBTXT file
+//        writeBoundingBoxes(bbs, fout_nms);
     }
 
     fout.close();
+//    fout_nms.close();
 }
-
 
 
 // -----------------------------------------------  MAIN  ------------------------------------------------ //
