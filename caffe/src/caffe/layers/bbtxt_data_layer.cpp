@@ -320,8 +320,6 @@ void BBTXTDataLayer<Dtype>::_cropBBFromImage (const cv::Mat &cv_img, cv::Mat &cv
 
         boost::random::uniform_real_distribution<double> dists(0.0, 1.0);
         reference_size = std::round(std::exp(rsl_min + (dists(*rng) * (rsl_max-rsl_min))));
-
-        std::cout << "rs: " << reference_size << std::endl;
     }
     else
     {
