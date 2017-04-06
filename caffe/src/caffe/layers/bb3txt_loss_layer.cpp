@@ -434,7 +434,7 @@ void BB3TXTLossLayer<Dtype>::_renderCoordinateCircle (cv::Mat &acc, int x, int y
                     }
                     else if (channel == 2 || channel == 4 || channel == 6 || channel == 7)
                     {
-                        // fblx, fbly, fbrx, fbry, rblx, rbly, ftly
+                        // fbly, fbry, rbly, ftly
                         acc.at<Dtype>(yp, xp) = Dtype(0.5f + (value-y - i*this->_scale) / this->_ideal_size);
                     }
                 }

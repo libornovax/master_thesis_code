@@ -153,6 +153,8 @@ class MACCNetGenerator(object):
 			for line in lines:
 				self._add_layer(line, outfile, True)
 
+			outfile.write(self._layer_bb())
+
 
 	################################################################################################
 	#                                          PRIVATE                                             #
@@ -396,6 +398,29 @@ class MACCNetGenerator(object):
 					'    negative_ratio: 30\n' \
 					'    circle_ratio: %f\n'%(self.circle_ratio) + \
 					'    bounds_overlap: 0.33\n' + 
+					'  }\n' \
+					'}\n')
+
+		return out
+
+
+	def _layer_bb(self):
+		"""
+		Description of the MultiscaleAccumulatorLoss layer.
+		"""
+		out = '\n# ' + '-'*46 + ' BB ' + '-'*46 + ' #\n'
+
+		for i in range(len(self.accs)):
+			out += ('layer {\n' \
+					'  # -----------------------  SCALE 1/%d  (FOV %d x %d)\n'%(self.acc_scales[i], self.last_in_scale_fov[self.acc_scales[i]], self.last_in_scale_fov[self.acc_scales[i]]) + \
+					'  # -----------------------  Ideal bounding box size: %dx%d px\n'%(self.acc_bbs_ideal[i], self.acc_bbs_ideal[i]) + \
+					'  name: "bb_x%d"\n'%(self.acc_scales[i]) + \
+					'  type: "BB' + ('3' if self.bb_type == 'bb3txt' else '') + 'TXTBB"\n' \
+					'  bottom: "' + self.accs[i] + '"\n'
+					'  top: "' + self.accs[i] + '"\n' \
+					'  bbtxt_bb_param {\n' \
+					'    ideal_size: %f\n'%(self.acc_bbs_ideal[i]) + \
+					'    downsampling: %d\n'%(self.acc_scales[i]) + \
 					'  }\n' \
 					'}\n')
 

@@ -309,7 +309,7 @@ message ParamSpec {
 // NOTE
 // Update the next available ID when you add a new LayerParameter field.
 //
-// LayerParameter next available layer-specific ID: 149 (last added: bbtxt_param)
+// LayerParameter next available layer-specific ID: 150 (last added: bbtxt_bb_param)
 message LayerParameter {
   optional string name = 1; // the layer name
   optional string type = 2; // the layer type
@@ -410,6 +410,7 @@ message LayerParameter {
   // Added by Libor Novak
   optional AccumulatorLossParameter accumulator_loss_param = 147;
   optional BBTXTParameter bbtxt_param = 148;
+  optional BBTXTBBParameter bbtxt_bb_param = 149;
 }
 
 // Added by Libor Novak
@@ -453,6 +454,15 @@ message BBTXTParameter {
   // longer side) interval [min, max] from which we will be randomly selecting
   optional int32 reference_size_min = 3;
   optional int32 reference_size_max = 4;
+}
+
+// Added by Libor Novak
+// Parameters for the output bb scaling layer. Only for DEPLOYMENT!
+message BBTXTBBParameter {
+  // The size of the ideal bounding box, which would be detected by this layer
+  optional float ideal_size = 1;
+  // How many times is the accumulator downsampled with respect to the input image
+  optional int32 downsampling = 2;
 }
 
 // Message that stores parameters used to apply transformation
