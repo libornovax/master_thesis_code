@@ -112,6 +112,7 @@ void runPyramidDetection (const std::string &path_prototxt, const std::string &p
 
 
             // Show the result
+            int ai = 0;
             for (caffe::Blob<float>* output: net->output_blobs())
             {
 //                caffe::Blob<float>* output = net->output_blobs()[0];
@@ -131,7 +132,7 @@ void runPyramidDetection (const std::string &path_prototxt, const std::string &p
                     cv::minMaxLoc(acc_prob, 0, &mx);
                     std::cout << mx << std::endl;
 
-                    cv::imshow("Accumulator " + net->blob_names()[net->output_blob_indices()[0]] + " (" + std::to_string(s) + ")", acc_prob);
+                    cv::imshow("Accumulator " + net->blob_names()[net->output_blob_indices()[ai++]] + " (" + std::to_string(s) + ")", acc_prob);
 
                     // Draw detected boxes
                     for (int i = 0; i < acc_prob.rows; ++i)
@@ -139,7 +140,7 @@ void runPyramidDetection (const std::string &path_prototxt, const std::string &p
                         for (int j = 0; j < acc_prob.cols; ++j)
                         {
                             float conf = acc_prob.at<float>(i, j);
-                            if (conf >= 0.7)
+                            if (conf >= 0.5)
                             {
                                 int xmin = acc_xmin.at<float>(i, j) / s;
                                 int ymin = acc_ymin.at<float>(i, j) / s;
@@ -156,7 +157,7 @@ void runPyramidDetection (const std::string &path_prototxt, const std::string &p
                                 }
 
                                 cv::rectangle(image, cv::Rect(xmin, ymin, xmax-xmin, ymax-ymin), cv::Scalar(0,0,255));
-                                cv::circle(image, cv::Point(4*j/s, 4*i/s), 2, cv::Scalar(0,255,0), -1);
+//                                cv::circle(image, cv::Point(4*j/s, 4*i/s), 2, cv::Scalar(0,255,0), -1);
                             }
                         }
                     }
