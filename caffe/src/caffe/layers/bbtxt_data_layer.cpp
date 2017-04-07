@@ -358,14 +358,45 @@ void BBTXTDataLayer<Dtype>::_cropBBFromImage (const cv::Mat &cv_img, cv::Mat &cv
     int border_right  = (crop_x+crop_width  > cv_img.cols) ? (crop_x+crop_width  - cv_img.cols) : 0;
     int border_bottom = (crop_y+crop_height > cv_img.rows) ? (crop_y+crop_height - cv_img.rows) : 0;
 
-    cv::Mat cv_img_padded;
-    cv::copyMakeBorder(cv_img, cv_img_padded, border_top, border_bottom, border_left, border_right,
-                       cv::BORDER_CONSTANT, cv::Scalar(0, 0, 0));
-    // Crop
-    cv_img_cropped_out = cv_img_padded(cv::Rect(crop_x+border_left, crop_y+border_top, crop_width, crop_height));
-    cv::resize(cv_img_cropped_out, cv_img_cropped_out, cv::Size(width, height));
+
+    // -- CROP THE IMAGE -- //
+    // Because we want to save memory we will not use the copyMakeBorder function to create the border, but
+    // instead we will compute an intersection of the crop with the image, crop that intersection, scale it
+    // and then place it on black background to the position in which it would be cropped from
+
+    // Intersection of the crop with the image
+    int ints_width  = crop_width - border_left - border_right;
+    int ints_height = crop_height - border_top - border_bottom;
+    cv::Rect intersection(crop_x+border_left, crop_y+border_top, ints_width, ints_height);
+
+    // Scale the intersection according to the crip scaling ratio (do not round here because the crop could
+    // escape from the network input size - conversion to int will floor it)
+    int ints_width_scaled  = ints_width / size * reference_size;
+    int ints_height_scaled = ints_height / size * reference_size;
+    int border_left_scaled = border_left / size * reference_size;  // x coordinate of the crop
+    int border_top_scaled  = border_top / size * reference_size;   // y coordinate of the crop
+
+    CHECK_GT(ints_width_scaled, 0) << "Crop does not intersect the image";
+    CHECK_GT(ints_height_scaled, 0) << "Crop does not intersect the image";
+    CHECK_LE(ints_width_scaled, width) << "Crop larger than width: " << ints_width_scaled;
+    CHECK_LE(ints_height_scaled, height) << "Crop larger than height: " << ints_height_scaled;
+    CHECK_LE(border_left_scaled+ints_width_scaled, width) << "Moved crop does not fit in the image";
+    CHECK_LE(border_top_scaled+ints_height_scaled, height) << "Moved crop does not fit in the image";
+
+    // Crop and scale down the cropped intersection
+    cv::Mat cv_img_cropped_scaled;
+    cv::resize(cv_img(intersection), cv_img_cropped_scaled, cv::Size(ints_width_scaled, ints_height_scaled));
+
+    // Initialize the network input with black
+    cv_img_cropped_out = cv::Mat::zeros(height, width, CV_8UC3);
+
+    // Place the crop onto black canvas of the size of the network input image
+    cv::Mat cv_img_subcrop = cv_img_cropped_out(cv::Rect(border_left_scaled, border_top_scaled,
+                                                         ints_width_scaled, ints_height_scaled));
+    cv_img_cropped_scaled.copyTo(cv_img_subcrop);
 
 
+    // -- UPDATE THE COORDINATES OF THE BOUNDING BOXES -- //
     // Update the bounding box coordinates - we need to update all annotations
     Dtype x_scaling   = float(width) / crop_width;
     Dtype y_scaling   = float(height) / crop_height;
@@ -382,10 +413,10 @@ void BBTXTDataLayer<Dtype>::_cropBBFromImage (const cv::Mat &cv_img, cv::Mat &cv
         data[3] = (data[3]-crop_x) * x_scaling;
         data[4] = (data[4]-crop_y) * y_scaling;
 
-//        cv::rectangle(cv_img_cropped_out, cv::Rect(data[1], data[2], data[3]-data[1], data[4]-data[2]), cv::Scalar(0,0,255), 2);
+        cv::rectangle(cv_img_cropped_out, cv::Rect(data[1], data[2], data[3]-data[1], data[4]-data[2]), cv::Scalar(0,0,255), 2);
     }
-//    static int imi = 0;
-//    if(this->phase_ == TRAIN) cv::imwrite("cropped" + std::to_string(imi++) + ".png", cv_img_cropped_out);
+    static int imi = 0;
+    if(this->phase_ == TRAIN) cv::imwrite("cropped" + std::to_string(imi++) + ".png", cv_img_cropped_out);
 }
 
 
