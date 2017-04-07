@@ -421,10 +421,10 @@ void BBTXTDataLayer<Dtype>::_cropBBFromImage (const cv::Mat &cv_img, cv::Mat &cv
         data[3] = (data[3]-crop_x) * x_scaling;
         data[4] = (data[4]-crop_y) * y_scaling;
 
-        cv::rectangle(cv_img_cropped_out, cv::Rect(data[1], data[2], data[3]-data[1], data[4]-data[2]), cv::Scalar(0,0,255), 2);
+//        cv::rectangle(cv_img_cropped_out, cv::Rect(data[1], data[2], data[3]-data[1], data[4]-data[2]), cv::Scalar(0,0,255), 2);
     }
-    static int imi = 0;
-    if(this->phase_ == TRAIN) cv::imwrite("cropped" + std::to_string(imi++) + ".png", cv_img_cropped_out);
+//    static int imi = 0;
+//    if(this->phase_ == TRAIN) cv::imwrite("cropped" + std::to_string(imi++) + ".png", cv_img_cropped_out);
 }
 
 
