@@ -369,10 +369,6 @@ void BBTXTDataLayer<Dtype>::_cropBBFromImage (const cv::Mat &cv_img, cv::Mat &cv
     int ints_height = crop_height - border_top - border_bottom;
     cv::Rect intersection(crop_x+border_left, crop_y+border_top, ints_width, ints_height);
 
-    this->_i_global_mtx.lock();
-    std::cout << intersection << std::endl;
-    this->_i_global_mtx.unlock();
-
     // Scale the intersection according to the crip scaling ratio
     int ints_width_scaled  = ints_width / size * reference_size;
     int ints_height_scaled = ints_height / size * reference_size;
