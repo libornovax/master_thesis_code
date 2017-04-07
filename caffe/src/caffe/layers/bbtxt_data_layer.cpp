@@ -331,8 +331,8 @@ void BBTXTDataLayer<Dtype>::_cropBBFromImage (const cv::Mat &cv_img, cv::Mat &cv
     }
 
     const Dtype size      = std::max(w, h);
-    const int crop_width  = std::round(double(width) / reference_size * size);
-    const int crop_height = std::round(double(height) / reference_size * size);
+    const int crop_width  = std::ceil(double(width) / reference_size * size);
+    const int crop_height = std::ceil(double(height) / reference_size * size);
 
     // Select a random position of the crop, but it has to fully contain the bounding box
     int crop_x, crop_y;
@@ -369,6 +369,10 @@ void BBTXTDataLayer<Dtype>::_cropBBFromImage (const cv::Mat &cv_img, cv::Mat &cv
     int ints_height = crop_height - border_top - border_bottom;
     cv::Rect intersection(crop_x+border_left, crop_y+border_top, ints_width, ints_height);
 
+    this->_i_global_mtx.lock();
+    std::cout << intersection << std::endl;
+    this->_i_global_mtx.unlock();
+
     // Scale the intersection according to the crip scaling ratio
     int ints_width_scaled  = ints_width / size * reference_size;
     int ints_height_scaled = ints_height / size * reference_size;
@@ -379,6 +383,13 @@ void BBTXTDataLayer<Dtype>::_cropBBFromImage (const cv::Mat &cv_img, cv::Mat &cv
     if (ints_height_scaled > height) ints_height_scaled = height;
     if (border_left_scaled+ints_width_scaled > width) border_left_scaled = width - ints_width_scaled;
     if (border_top_scaled+ints_height_scaled > height) border_top_scaled = height - ints_height_scaled;
+
+    CHECK_GT(ints_width_scaled, 0) << "Crop does not intersect the image";
+    CHECK_GT(ints_height_scaled, 0) << "Crop does not intersect the image";
+    CHECK_LE(ints_width_scaled, width) << "Crop larger than width: " << ints_width_scaled;
+    CHECK_LE(ints_height_scaled, height) << "Crop larger than height: " << ints_height_scaled;
+    CHECK_LE(border_left_scaled+ints_width_scaled, width) << "Moved crop does not fit in the image";
+    CHECK_LE(border_top_scaled+ints_height_scaled, height) << "Moved crop does not fit in the image";
 
     // Crop and scale down the cropped intersection
     cv::Mat cv_img_cropped_scaled;

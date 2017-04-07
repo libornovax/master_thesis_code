@@ -322,8 +322,8 @@ void BB3TXTDataLayer<Dtype>::_cropBBFromImage (const cv::Mat &cv_img, cv::Mat &c
     }
 
     const Dtype size      = std::max(w, h);
-    const int crop_width  = double(width) / reference_size * size;
-    const int crop_height = double(height) / reference_size * size;
+    const int crop_width  = std::ceil(double(width) / reference_size * size);
+    const int crop_height = std::ceil(double(height) / reference_size * size);
 
     // Select a random position of the crop, but it has to fully contain the bounding box
     int crop_x, crop_y;
@@ -371,6 +371,13 @@ void BB3TXTDataLayer<Dtype>::_cropBBFromImage (const cv::Mat &cv_img, cv::Mat &c
     if (ints_height_scaled > height) ints_height_scaled = height;
     if (border_left_scaled+ints_width_scaled > width) border_left_scaled = width - ints_width_scaled;
     if (border_top_scaled+ints_height_scaled > height) border_top_scaled = height - ints_height_scaled;
+
+    CHECK_GT(ints_width_scaled, 0) << "Crop does not intersect the image";
+    CHECK_GT(ints_height_scaled, 0) << "Crop does not intersect the image";
+    CHECK_LE(ints_width_scaled, width) << "Crop larger than width: " << ints_width_scaled;
+    CHECK_LE(ints_height_scaled, height) << "Crop larger than height: " << ints_height_scaled;
+    CHECK_LE(border_left_scaled+ints_width_scaled, width) << "Moved crop does not fit in the image";
+    CHECK_LE(border_top_scaled+ints_height_scaled, height) << "Moved crop does not fit in the image";
 
     // Crop and scale down the cropped intersection
     cv::Mat cv_img_cropped_scaled;
