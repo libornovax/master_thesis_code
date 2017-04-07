@@ -369,19 +369,16 @@ void BBTXTDataLayer<Dtype>::_cropBBFromImage (const cv::Mat &cv_img, cv::Mat &cv
     int ints_height = crop_height - border_top - border_bottom;
     cv::Rect intersection(crop_x+border_left, crop_y+border_top, ints_width, ints_height);
 
-    // Scale the intersection according to the crip scaling ratio (do not round here because the crop could
-    // escape from the network input size - conversion to int will floor it)
+    // Scale the intersection according to the crip scaling ratio
     int ints_width_scaled  = ints_width / size * reference_size;
     int ints_height_scaled = ints_height / size * reference_size;
     int border_left_scaled = border_left / size * reference_size;  // x coordinate of the crop
     int border_top_scaled  = border_top / size * reference_size;   // y coordinate of the crop
-
-    CHECK_GT(ints_width_scaled, 0) << "Crop does not intersect the image";
-    CHECK_GT(ints_height_scaled, 0) << "Crop does not intersect the image";
-    CHECK_LE(ints_width_scaled, width) << "Crop larger than width: " << ints_width_scaled;
-    CHECK_LE(ints_height_scaled, height) << "Crop larger than height: " << ints_height_scaled;
-    CHECK_LE(border_left_scaled+ints_width_scaled, width) << "Moved crop does not fit in the image";
-    CHECK_LE(border_top_scaled+ints_height_scaled, height) << "Moved crop does not fit in the image";
+    // Corrections for imprecisions - we have to keep the crop inside of the network input image dimensions
+    if (ints_width_scaled > width) ints_width_scaled = width;
+    if (ints_height_scaled > height) ints_height_scaled = height;
+    if (border_left_scaled+ints_width_scaled > width) border_left_scaled = width - ints_width_scaled;
+    if (border_top_scaled+ints_height_scaled > height) border_top_scaled = height - ints_height_scaled;
 
     // Crop and scale down the cropped intersection
     cv::Mat cv_img_cropped_scaled;
