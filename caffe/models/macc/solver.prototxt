@@ -1,9 +1,9 @@
-net: "/Users/libornovak/Software/master_thesis/caffe/models/macc/test/macc_0.3_r2_x4_train_val.prototxt"
+net: "/Users/libornovak/Software/master_thesis/caffe/models/macc/test/macc_0.3_r1_x4_to_x16_train_val.prototxt"
 
 type: "SGD"
 
-test_iter: 15
-test_interval: 100
+#test_iter: 15
+#test_interval: 100
 display: 10
 
 base_lr: 0.0001
