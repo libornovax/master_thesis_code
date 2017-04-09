@@ -447,7 +447,7 @@ void BBTXTDataLayer<Dtype>::_applyPixelTransformationsAndCopyOut (const cv::Mat 
         boost::random::uniform_int_distribution<> diste(-40, 50);  // Exposure
         exposure = diste(*rng);
 
-        boost::random::uniform_int_distribution<> distbgr(-20, 20);  // Hue
+        boost::random::uniform_int_distribution<> distbgr(-30, 30);  // Hue
         bgr[0] = distbgr(*rng);
         bgr[1] = distbgr(*rng);
         bgr[2] = distbgr(*rng);
