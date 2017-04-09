@@ -444,7 +444,7 @@ void BBTXTDataLayer<Dtype>::_applyPixelTransformationsAndCopyOut (const cv::Mat 
         // Apply random transformations
         caffe::rng_t* rng = static_cast<caffe::rng_t*>(this->_rng->generator());
 
-        boost::random::uniform_int_distribution<> diste(-30, 30);  // Exposure
+        boost::random::uniform_int_distribution<> diste(-40, 50);  // Exposure
         exposure = diste(*rng);
 
         boost::random::uniform_int_distribution<> distbgr(-20, 20);  // Hue
