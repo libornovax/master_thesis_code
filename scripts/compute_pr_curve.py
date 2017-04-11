@@ -104,7 +104,8 @@ def tp_fp_fn(gt, detections, min_iou, dont_care):
 	for i in dtis:
 		for d in range(len(dont_care)):
 			# If more than 75% of the detection lies inside of a don't care region we discard it
-			if detections[i].intersection_area(dont_care[d]) / detections[i].area() > 0.75:
+			if detections[i].area() > 0 and detections[i].intersection_area(dont_care[d]) \
+											 / detections[i].area() > 0.75:
 				fpd -= 1;
 
 	return int(tp), int(fp), int(fn), int(fnr), int(fpd)
