@@ -54,7 +54,8 @@ namespace {
 template <typename Dtype>
 BB3TXTDataLayer<Dtype>::BB3TXTDataLayer (const LayerParameter &param)
     : BasePrefetchingDataLayer<Dtype>(param),
-      InternalThreadpool(std::max(int(boost::thread::hardware_concurrency()/2), 1))
+      InternalThreadpool(std::min(int(std::max(int(boost::thread::hardware_concurrency()/2), 1)),
+                                  int(param.image_data_param().batch_size())))
 {
 }
 
