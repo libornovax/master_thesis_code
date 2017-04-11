@@ -102,7 +102,7 @@ std::vector<BB3D> extract3DBoundingBoxes (caffe::Blob<float> *output, const std:
     cv::Mat acc_rbly(output->shape(2), output->shape(3), CV_32FC1, data_output+output->offset(0, 6));
     cv::Mat acc_ftly(output->shape(2), output->shape(3), CV_32FC1, data_output+output->offset(0, 7));
 
-    // Extract detected 3D boxes
+    // Extract detected 3D boxes - only extract local maxima from 3x3 neighborhood
     for (int i = 0; i < acc_prob.rows; ++i)
     {
         for (int j = 0; j < acc_prob.cols; ++j)
@@ -110,6 +110,23 @@ std::vector<BB3D> extract3DBoundingBoxes (caffe::Blob<float> *output, const std:
             float conf = acc_prob.at<float>(i, j);
             if (conf >= 0.1)
             {
+                // Check if it is a local maximum
+                if (i > 0)
+                {
+                    if (j > 0 && acc_prob.at<float>(i-1, j-1) > conf) continue;
+                    if (acc_prob.at<float>(i-1, j) > conf) continue;
+                    if (j < acc_prob.cols-1 && acc_prob.at<float>(i-1, j+1) > conf) continue;
+                }
+                if (j > 0 && acc_prob.at<float>(i, j-1) > conf) continue;
+                if (j < acc_prob.cols-1 && acc_prob.at<float>(i, j+1) > conf) continue;
+                if (i < acc_prob.rows-1)
+                {
+                    if (j > 0 && acc_prob.at<float>(i+1, j-1) > conf) continue;
+                    if (acc_prob.at<float>(i+1, j) > conf) continue;
+                    if (j < acc_prob.cols-1 && acc_prob.at<float>(i+1, j+1) > conf) continue;
+                }
+
+                // Ok, this is a local maximum
                 int fblx = acc_fblx.at<float>(i, j) / scale;
                 int fbly = acc_fbly.at<float>(i, j) / scale;
                 int fbrx = acc_fbrx.at<float>(i, j) / scale;

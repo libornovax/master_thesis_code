@@ -142,6 +142,23 @@ void runPyramidDetection (const std::string &path_prototxt, const std::string &p
                             float conf = acc_prob.at<float>(i, j);
                             if (conf >= 0.5)
                             {
+                                // Check if it is a local maximum
+                                if (i > 0)
+                                {
+                                    if (j > 0 && acc_prob.at<float>(i-1, j-1) > conf) continue;
+                                    if (acc_prob.at<float>(i-1, j) > conf) continue;
+                                    if (j < acc_prob.cols-1 && acc_prob.at<float>(i-1, j+1) > conf) continue;
+                                }
+                                if (j > 0 && acc_prob.at<float>(i, j-1) > conf) continue;
+                                if (j < acc_prob.cols-1 && acc_prob.at<float>(i, j+1) > conf) continue;
+                                if (i < acc_prob.rows-1)
+                                {
+                                    if (j > 0 && acc_prob.at<float>(i+1, j-1) > conf) continue;
+                                    if (acc_prob.at<float>(i+1, j) > conf) continue;
+                                    if (j < acc_prob.cols-1 && acc_prob.at<float>(i+1, j+1) > conf) continue;
+                                }
+
+                                // Ok, this is a local maximum
                                 int xmin = acc_xmin.at<float>(i, j) / s;
                                 int ymin = acc_ymin.at<float>(i, j) / s;
                                 int xmax = acc_xmax.at<float>(i, j) / s;
@@ -188,6 +205,23 @@ void runPyramidDetection (const std::string &path_prototxt, const std::string &p
                             float conf = acc_prob.at<float>(i, j);
                             if (conf >= 0.7)
                             {
+                                // Check if it is a local maximum
+                                if (i > 0)
+                                {
+                                    if (j > 0 && acc_prob.at<float>(i-1, j-1) > conf) continue;
+                                    if (acc_prob.at<float>(i-1, j) > conf) continue;
+                                    if (j < acc_prob.cols-1 && acc_prob.at<float>(i-1, j+1) > conf) continue;
+                                }
+                                if (j > 0 && acc_prob.at<float>(i, j-1) > conf) continue;
+                                if (j < acc_prob.cols-1 && acc_prob.at<float>(i, j+1) > conf) continue;
+                                if (i < acc_prob.rows-1)
+                                {
+                                    if (j > 0 && acc_prob.at<float>(i+1, j-1) > conf) continue;
+                                    if (acc_prob.at<float>(i+1, j) > conf) continue;
+                                    if (j < acc_prob.cols-1 && acc_prob.at<float>(i+1, j+1) > conf) continue;
+                                }
+
+                                // Ok, this is a local maximum
                                 int fblx = acc_fblx.at<float>(i, j) / s;
                                 int fbly = acc_fbly.at<float>(i, j) / s;
                                 int fbrx = acc_fbrx.at<float>(i, j) / s;
