@@ -178,13 +178,20 @@ class PRPlotter(object):
 
 		self._initialize_plot()
 
-		self.categories = []
-		self.tps        = []
-		self.fps        = []
-		self.fns        = []
-		self.precisions = []
-		self.recalls    = []
-
+		self.categories   = []
+		self.tps          = []
+		self.fps          = []
+		self.fns          = []
+		self.fnsr         = []
+		self.fpsd         = []
+		self.precisions   = []
+		self.recalls      = []
+		self.precisionsr  = []
+		self.recallsr     = []
+		self.precisionsd  = []
+		self.recallsd     = []
+		self.precisionsrd = []
+		self.recallsrd    = []
 
 		
 	def _check_file_list(self):
@@ -239,9 +246,17 @@ class PRPlotter(object):
 		self.categories.append(category)
 		self.precisions.append(precisions)
 		self.recalls.append(recalls)
+		self.precisionsr.append(precisionsr)
+		self.recallsr.append(recallsr)
+		self.precisionsd.append(precisionsd)
+		self.recallsd.append(recallsd)
+		self.precisionsrd.append(precisionsrd)
+		self.recallsrd.append(recallsrd)
 		self.tps.append(tps)
 		self.fps.append(fps)
 		self.fns.append(fns)
+		self.fnsr.append(fnsr)
+		self.fpsd.append(fpsd)
 
 
 	def plot(self, category):
@@ -305,10 +320,14 @@ class PRPlotter(object):
 		# Save each category to a different CSV file
 		for c in range(len(self.categories)):
 			with open(path_out + '_' + self.categories[c] + '.csv', 'w') as outfile:
-				outfile.write('tp fp fn precision recall\n')
+				outfile.write('tp fp fn fnr fpd precision recall precisionr recallr precisiond ' \
+							  'recalld precisionrd recallrd\n')
 				for i in range(len(self.recalls[c])):
-					outfile.write('%d %d %d %f %f\n'%(self.tps[c][i], self.fps[c][i],
-								  self.fns[c][i], self.precisions[c][i], self.recalls[c][i]))
+					outfile.write('%d %d %d %d %d %f %f %f %f %f %f %f %f\n'%(self.tps[c][i],
+								  self.fps[c][i], self.fns[c][i], self.fnsr[c][i], self.fpsd[c][i], 
+								  self.precisions[c][i], self.recalls[c][i], self.precisionsr[c][i], 
+								  self.recallsr[c][i], self.precisionsd[c][i], self.recallsd[c][i], 
+								  self.precisionsrd[c][i], self.recallsrd[c][i]))
 
 		print('-- Plots saved to: ' + path_out)
 
