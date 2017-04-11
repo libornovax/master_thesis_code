@@ -16,7 +16,7 @@ class BB2D(object):
 	A 2D bounding box with a label and a confidence. Such a bounding box is meant to be read
 	from BBTXT files.
 	"""
-	def __init__(self, xmin, ymin, xmax, ymax, label=None, confidence=None):
+	def __init__(self, xmin, ymin, xmax, ymax, label=None, confidence=None, required=True):
 		super(BB2D, self).__init__()
 		
 		self.xmin = float(xmin)
@@ -24,8 +24,9 @@ class BB2D(object):
 		self.xmax = float(xmax)
 		self.ymax = float(ymax)
 
-		self.label 		= int(label) if (label is not None) else label
+		self.label 		= abs(int(label)) if (label is not None) else label
 		self.confidence = float(confidence) if (confidence is not None) else confidence
+		self.required   = required
 
 
 	def area(self):
@@ -38,6 +39,21 @@ class BB2D(object):
 		return float((self.xmax-self.xmin) * (self.ymax-self.ymin))
 
 
+	def intersection_area(self, other):
+		"""
+		Computes the area of intersection of itself with another BB2D bounding box.
+
+		Input:
+			other: Instance of BB2D
+		Output:
+			float
+		"""
+		intersection_width  = max(0.0, min(self.xmax, other.xmax) - max(self.xmin, other.xmin))
+		intersection_height = max(0.0, min(self.ymax, other.ymax) - max(self.ymin, other.ymin))
+
+		return float(intersection_width * intersection_height)
+
+
 	def iou(self, other):
 		"""
 		Computes intersection over union with the other BB2D bounding box.
@@ -47,11 +63,10 @@ class BB2D(object):
 		Output:
 			float
 		"""
-		intersection_width  = max(0.0, min(self.xmax, other.xmax) - max(self.xmin, other.xmin))
-		intersection_height = max(0.0, min(self.ymax, other.ymax) - max(self.ymin, other.ymin))
-		intersection_area = float(intersection_width * intersection_height)
+		intersection_area = self.intersection_area(other)
 
 		return intersection_area / float(self.area()+other.area()-intersection_area)
+
 
 	def width(self):
 		"""
@@ -73,7 +88,7 @@ class BB2D(object):
 		"""
 		return 'BB2D: {[' + str(self.xmin) + ', ' + str(self.ymin) + ', ' + str(self.xmax) + ', ' \
 			+ str(self.ymax) + '] label: ' + str(self.label) + ', confidence: ' \
-			+ str(self.confidence) + '}'
+			+ str(self.confidence) + (', required' if self.required else '') + '}'
 
 
 

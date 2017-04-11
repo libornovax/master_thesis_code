@@ -8,4 +8,5 @@
 
 name: jura
 mappings:
-    1: car  # There are only cars in this dataset
+    0: dontcare  # Regions to be ignored in computing PR curves
+    1: car       # There are only cars in this dataset

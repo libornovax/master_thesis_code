@@ -35,8 +35,15 @@ NUM_STEPS = 20
 # Categories (labels) for which we plot the PR curves
 CATEGORIES = [
 	'car',
-	'person'
+	# 'person'
 ]
+
+# Colors of the categories
+COLORS = {
+	'car': '#3399FF', 
+	'person': '#FF33CC',
+	# '#FF3300', '#40BF0D', '#FFE300', '#000000'
+}
 
 # Initialize the LabelMappingManager
 LMM = LabelMappingManager()
@@ -46,7 +53,7 @@ LMM = LabelMappingManager()
 #                                            FUNCTIONS                                             # 
 ####################################################################################################
 
-def tp_fp_fn(gt, detections, min_iou):
+def tp_fp_fn(gt, detections, min_iou, dont_care):
 	"""
 	Computes true positives (tp), false positives (fp) and false negatives (fn) from the given two
 	sets of bounding boxes - ground truth and detections.
@@ -55,14 +62,21 @@ def tp_fp_fn(gt, detections, min_iou):
 		gt:             List of BB2D ground truth bounding boxes
 		detections:     List of BB2D detections' bounding boxes
 		min_iou:        Minimum intersection over union threshold for a true positive
+		dont_care:      List of BB2D don't care regions
 	Output:
-		tp, fp, fn (all ints)
+		tp, fp, fn, fnr, fpd (all ints)
+		fnr: False negatives on only required ground truth
+		fpd: False positives only from the outside of the specified don't care regions
 	"""
 	# First compute a matrix of intersection over unions - we will be searching best matches in it
 	ious = np.zeros([len(gt), len(detections)], dtype=np.float)
 	for i in range(len(gt)):
 		for j in range(len(detections)):
 			ious[i,j] = gt[i].iou(detections[j])
+
+	# Indices of ground truth bbs and detections - will be used to track which ones we removed
+	gtis = range(len(gt))
+	dtis = range(len(detections))
 
 	# Find maxima - best matches -> true positives
 	tp = 0
@@ -71,13 +85,29 @@ def tp_fp_fn(gt, detections, min_iou):
 		# Remove this ground truth and detection from the matrix
 		ious = np.delete(ious, i, axis=0)
 		ious = np.delete(ious, j, axis=1)
+		# Remove this ground truth and detection from index lists
+		del gtis[i]
+		del dtis[j]
 		tp = tp + 1
 
 	# If we have some rows and columns left they are falses
 	fp = ious.shape[1]  # Unmatched detections
 	fn = ious.shape[0]  # Unmatched ground truth
 
-	return int(tp), int(fp), int(fn)
+	# Remove the remaining ground truth, which is not required
+	fnr = fn
+	for i in gtis:
+		if not gt[i].required: fnr -= 1
+
+	# Remove the remaining detections, which lie inside of don't care regions
+	fpd = fp
+	for i in dtis:
+		for d in range(len(dont_care)):
+			# If more than 75% of the detection lies inside of a don't care region we discard it
+			if detections[i].intersection_area(dont_care[d]) / detections[i].area() > 0.75:
+				fpd -= 1;
+
+	return int(tp), int(fp), int(fn), int(fnr), int(fpd)
 
 
 def pr_curve_points(tps, fps, fns):
@@ -180,7 +210,7 @@ class PRPlotter(object):
 		plt.title(self.title + ' (iou=%.2f)'%(self.iou))
 
 
-	def _add_curve(self, tps, fps, fns, category):
+	def _add_curve(self, tps, fps, fns, fnsr, fpsd, category):
 		"""
 		Puts a new PR curve into the plot.
 
@@ -188,12 +218,22 @@ class PRPlotter(object):
 			tps:      np.array of true positives' counts (length N)
 			fps:      np.array of false positives' counts (length N)
 			fns:      np.array of false negatives' counts (length N)
+			fnsr:     np.array of false negatives' counts on required gt (length N)
+			fpsd:     np.array of false negatives' counts outside of don't care regions (length N)
 			category: Object category (label), which the curve corresponds to
 		"""
 		# Compute the precision and recall for the PR curve
-		precisions, recalls = pr_curve_points(tps, fps, fns)
+		precisions, recalls     = pr_curve_points(tps, fps, fns)
+		precisionsr, recallsr   = pr_curve_points(tps, fps, fnsr)
+		precisionsd, recallsd   = pr_curve_points(tps, fpsd, fns)
+		precisionsrd, recallsrd = pr_curve_points(tps, fpsd, fnsr)
 
-		plt.plot(precisions, recalls, label=category)
+		plt.plot(precisions, recalls, label=category, color=COLORS[category], linewidth=2)
+		plt.plot(precisionsd, recallsd, label=category+' - don\'t care', color=COLORS[category])
+		plt.plot(precisionsr, recallsr, label=category+' - required', color=COLORS[category], 
+				 linestyle='--')
+		plt.plot(precisionsrd, recallsrd, label=category+' - required, don\'t care', 
+				 color=COLORS[category], linestyle=':')
 
 		self.categories.append(category)
 		self.precisions.append(precisions)
@@ -210,9 +250,11 @@ class PRPlotter(object):
 		"""
 		print('-- Plotting category: ' + category)
 
-		tps = np.zeros(NUM_STEPS, dtype=np.int)
-		fps = np.zeros(NUM_STEPS, dtype=np.int)
-		fns = np.zeros(NUM_STEPS, dtype=np.int)
+		tps  = np.zeros(NUM_STEPS, dtype=np.int)
+		fps  = np.zeros(NUM_STEPS, dtype=np.int)
+		fns  = np.zeros(NUM_STEPS, dtype=np.int)
+		fnsr = np.zeros(NUM_STEPS, dtype=np.int)  # Only required bounding boxes
+		fpsd = np.zeros(NUM_STEPS, dtype=np.int)  # False positives without those in 'dontcare' regions
 
 		for s, conf_thr in enumerate(np.linspace(0, 1, NUM_STEPS)):
 			# Process each image from the file list
@@ -221,8 +263,11 @@ class PRPlotter(object):
 					# Filter the bounding boxes - we only want the current category
 					gt_category = [bb for bb in self.iml_gt[filename]
 								   if self.gt_mapping[bb.label] == category]
+					dont_care   = [bb for bb in self.iml_gt[filename]
+								 if self.gt_mapping[bb.label] == 'dontcare']
 				else:
 					gt_category = []
+					dont_care   = []
 
 				if filename in self.iml_detections:
 					# Filter the bounding boxes - we only want the current category
@@ -232,14 +277,16 @@ class PRPlotter(object):
 				else:
 					detections_category = []
 
-				tp, fp, fn = tp_fp_fn(gt_category, detections_category, self.iou)
+				tp, fp, fn, fnr, fpd = tp_fp_fn(gt_category, detections_category, self.iou, dont_care)
 
-				tps[s] = tps[s] + tp
-				fps[s] = fps[s] + fp
-				fns[s] = fns[s] + fn
+				tps[s]  = tps[s] + tp
+				fps[s]  = fps[s] + fp
+				fns[s]  = fns[s] + fn
+				fnsr[s] = fnsr[s] + fnr
+				fpsd[s] = fpsd[s] + fpd
 
 		# Compute precision and recall and add the curve to the plot
-		self._add_curve(tps, fps, fns, category)
+		self._add_curve(tps, fps, fns, fnsr, fpsd, category)
 
 
 	def save_plot(self, path_out):
@@ -249,7 +296,7 @@ class PRPlotter(object):
 		Input:
 			path_out: Path to the output file(s) (without extension)
 		"""
-		plt.legend()
+		plt.legend(loc='lower left', prop={'size':13})
 
 		plt.savefig(path_out + '.pdf')
 		plt.savefig(path_out + '.png')

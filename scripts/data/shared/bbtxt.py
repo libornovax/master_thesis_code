@@ -6,6 +6,8 @@ filename label confidence xmin ymin xmax ymax
 filename label confidence xmin ymin xmax ymax
 filename label confidence xmin ymin xmax ymax
 ...
+
+IMPORTANT! Negative label means occlusion!
 """
 
 __date__   = '12/02/2016'
@@ -43,7 +45,8 @@ def load_bbtxt(path_bbtxt):
 
 			image_dict[filename].append(BB2D(xmin=float(data[3]), ymin=float(data[4]),
 											 xmax=float(data[5]), ymax=float(data[6]),
-											 label=int(data[1]), confidence=float(data[2])))
+											 label=abs(int(data[1])), confidence=float(data[2]),
+											 required=(int(data[1]) >= 0)))
 
 		return image_dict
 
@@ -71,7 +74,8 @@ def load_bbtxt_to_list(path_bbtxt):
 
 			bb2d_list.append(BB2D(xmin=float(data[3]), ymin=float(data[4]),
 								  xmax=float(data[5]), ymax=float(data[6]),
-								  label=int(data[1]), confidence=float(data[2])))
+								  label=abs(int(data[1])), confidence=float(data[2]),
+								  required=(int(data[1]) >= 0)))
 
 		return bb2d_list
 
