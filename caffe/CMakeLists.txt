@@ -46,6 +46,9 @@ caffe_option(USE_LEVELDB "Build with levelDB" OFF)
 caffe_option(USE_LMDB "Build with lmdb" ON)
 caffe_option(ALLOW_LMDB_NOLOCK "Allow MDB_NOLOCK when reading LMDB files (only if necessary)" OFF)
 
+# Measure time of the tests
+add_definitions(-DMEASURE_TIME)
+
 # ---[ Dependencies
 include(cmake/Dependencies.cmake)
 

@@ -6,6 +6,7 @@
 //
 
 #include <caffe/caffe.hpp>
+#include "caffe/util/benchmark.hpp"
 
 // This code only works with OpenCV!
 #ifdef USE_OPENCV
@@ -56,6 +57,8 @@ void runPyramidDetection (const std::string &path_prototxt, const std::string &p
     caffe::Caffe::set_mode(caffe::Caffe::GPU);
 #endif
 
+    caffe::CPUTimer timer;
+
 //    const std::vector<double> scales = { 2.25, 1.5, 1.0, 0.66, 0.44, 0.29 };
     const std::vector<double> scales = { 1.0 };
 
@@ -83,6 +86,7 @@ void runPyramidDetection (const std::string &path_prototxt, const std::string &p
         CHECK(boost::filesystem::exists(line)) << "Image '" << line << "' not found!";
 
         // Load the image
+        timer.Start();
         cv::Mat image = cv::imread(line, CV_LOAD_IMAGE_COLOR);
         cv::Mat imagef; image.convertTo(imagef, CV_32FC3);
 
@@ -90,7 +94,11 @@ void runPyramidDetection (const std::string &path_prototxt, const std::string &p
         imagef -= cv::Scalar(128.0f, 128.0f, 128.0f);
         imagef *= 1.0f/128.0f;
 
+        timer.Stop();
+        std::cout << "Time to read image: " << timer.MilliSeconds() << " ms" << std::endl;
+
         // Build the image pyramid and run detection on each scale of the pyramid
+        timer.Start();
         for (double s: scales)
         {
             cv::Mat imagef_scaled; cv::resize(imagef, imagef_scaled, cv::Size(), s, s);
@@ -241,6 +249,9 @@ void runPyramidDetection (const std::string &path_prototxt, const std::string &p
                 }
             }
         }
+
+        timer.Stop();
+        std::cout << "Time to detection: " << timer.MilliSeconds() << " ms" << std::endl;
 
         cv::imshow("Image", image);
         cv::waitKey(0);

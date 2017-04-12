@@ -8,6 +8,7 @@
 //
 
 #include <caffe/caffe.hpp>
+#include "caffe/util/benchmark.hpp"
 
 // This code only works with OpenCV!
 #ifdef USE_OPENCV
@@ -144,21 +145,34 @@ std::vector<BB3D> extract3DBoundingBoxes (caffe::Blob<float> *output, const std:
 }
 
 
-std::vector<BB3D> detectObjects (const std::string &path_image, const cv::Mat &image,
-                                 const std::vector<double> &scales,
+std::vector<BB3D> detectObjects (const std::string &path_image, const std::vector<double> &scales,
                                  const std::shared_ptr<caffe::Net<float>> &net)
 {
+#ifdef MEASURE_TIME
+    caffe::CPUTimer timer;
+#endif
     std::vector<BB3D> bounding_boxes;
 
     caffe::Blob<float>* input_layer  = net->input_blobs()[0];
 
     std::vector<cv::Mat> input_channels;
 
+#ifdef MEASURE_TIME
+    timer.Start();
+#endif
+    // Load the image
+    cv::Mat image = cv::imread(path_image, CV_LOAD_IMAGE_COLOR);
     // Convert to zero mean and unit variance
     cv::Mat imagef; image.convertTo(imagef, CV_32FC3);
     imagef -= cv::Scalar(128.0f, 128.0f, 128.0f);
     imagef *= 1.0f/128.0f;
+#ifdef MEASURE_TIME
+    timer.Stop(); std::cout << "Time to to read image: " << timer.MilliSeconds() << " ms" << std::endl;
+#endif
 
+#ifdef MEASURE_TIME
+    timer.Start();
+#endif
     // Build the image pyramid and run detection on each scale of the pyramid
     for (double s: scales)
     {
@@ -182,6 +196,10 @@ std::vector<BB3D> detectObjects (const std::string &path_image, const cv::Mat &i
             bounding_boxes.insert(bounding_boxes.end(), new_bbs.begin(), new_bbs.end());
         }
     }
+
+#ifdef MEASURE_TIME
+    timer.Stop(); std::cout << "Time net + bb extraction: " << timer.MilliSeconds() << " ms" << std::endl;
+#endif
 
     return bounding_boxes;
 }
@@ -213,6 +231,10 @@ void runPyramidDetection (const std::string &path_prototxt, const std::string &p
     caffe::Caffe::set_mode(caffe::Caffe::CPU);
 #else
     caffe::Caffe::set_mode(caffe::Caffe::GPU);
+#endif
+
+#ifdef MEASURE_TIME
+    caffe::CPUTimer timer;
 #endif
 
     // Scaling factor is 1.5
@@ -249,14 +271,19 @@ void runPyramidDetection (const std::string &path_prototxt, const std::string &p
         CHECK(boost::filesystem::exists(line)) << "Image '" << line << "' not found!";
 
         // Detect bbs on the image
-        cv::Mat image = cv::imread(line, CV_LOAD_IMAGE_COLOR);
-        std::vector<BB3D> bbs = detectObjects(line, image, scales, net);
+        std::vector<BB3D> bbs = detectObjects(line, scales, net);
 
         // Save the bounding boxes before NMS to a BBTXT file
         writeBoundingBoxes(bbs, fout);
 
+//#ifdef MEASURE_TIME
+//        timer.Start();
+//#endif
 //        // Non-maxima suppression
 //        bbs = nonMaximaSuppression(bbs);
+//#ifdef MEASURE_TIME
+//        timer.Stop(); std::cout << "Time to perform NMS: " << timer.MilliSeconds() << " ms" << std::endl;
+//#endif
 
 //        // Save the bounding boxes after NMS to a BBTXT file
 //        writeBoundingBoxes(bbs, fout_nms);
