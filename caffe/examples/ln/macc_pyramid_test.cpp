@@ -93,6 +93,7 @@ namespace {
     }
 
 
+#ifndef BASIC_NON_MAXIMA_SUPPRESSION
     /**
      * @brief Combines 2 bounding boxes into one
      * @param bb1
@@ -125,6 +126,8 @@ namespace {
     {
         return iou(bb1, bb2);
     }
+#endif
+
 }
 
 

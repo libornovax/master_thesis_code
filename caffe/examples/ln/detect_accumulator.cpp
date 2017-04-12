@@ -92,7 +92,7 @@ void runPyramidDetection (const std::string &path_prototxt, const std::string &p
 
     std::ifstream infile(path_image_list.c_str());
     CHECK(infile) << "Unable to open image list TXT file '" << path_image_list << "'!";
-    std::string line; int i = 0;
+    std::string line; // int i = 0;
     while (std::getline(infile, line))
     {
         LOG(INFO) << line;
