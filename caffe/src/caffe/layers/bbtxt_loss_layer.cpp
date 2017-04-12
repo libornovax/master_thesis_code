@@ -47,6 +47,9 @@ void BBTXTLossLayer<Dtype>::LayerSetUp (const vector<Blob<Dtype>*> &bottom, cons
     this->_accumulator = std::make_shared<Blob<Dtype>>();
     this->_diff        = std::make_shared<Blob<Dtype>>();
 
+    this->_accumulator->ReshapeLike(*bottom[1]);
+    this->_diff->ReshapeLike(*bottom[1]);
+
     // Scale of this accumulator is given by downsampling
     this->_scale = this->layer_param_.accumulator_loss_param().downsampling();
     // Compute the bounds for bounding boxes, which should be included in this accumulator
