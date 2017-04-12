@@ -18,8 +18,9 @@ public:
 
 
 BlockingCounter::BlockingCounter()
-    : _sync(new sync()),
-      _counter(0)
+    : _counter(0),
+      _sync(new sync())
+
 {
 }
 

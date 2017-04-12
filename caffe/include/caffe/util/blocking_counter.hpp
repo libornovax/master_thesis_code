@@ -7,6 +7,8 @@
 #define CAFFE_UTIL_BLOCKING_COUNTER_HPP_
 
 #include <string>
+#include <boost/thread.hpp>
+
 
 namespace caffe {
 
