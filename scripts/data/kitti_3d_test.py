@@ -43,6 +43,14 @@ MAPPING = LMM.get_mapping('kitti')
 
 
 ####################################################################################################
+#                                            SETTINGS                                              # 
+####################################################################################################
+
+# y coordinate of the ground plane
+GROUND = 2.1
+
+
+####################################################################################################
 #                                            FUNCTIONS                                             # 
 ####################################################################################################
 
@@ -67,7 +75,7 @@ def read_camera_matrix(line):
 	return P
 
 
-def extract_3D_bb(data, P):
+def extract_3D_bb(data, P, image_ground):
 	"""
 	Extract 3D bounding box coordinates in the image from the KITTI labels.
 
@@ -98,12 +106,48 @@ def extract_3D_bb(data, P):
 	# Rotate the 3D box around y axis and translate it to the correct position in the camera frame
 	X = Rt4x4(R3x3_y(ry), t3x1(cx, cy, cz)) * X
 
-	print(X[:,2])
+	print(X[:,0])
 
 	x = P * X
 	# x is in homogeneous coordinates -> get u, v
 	x = x / x[2,:]
 	x = x[0:2,:]
+
+	
+	# Plot the boxes to the ground plane
+	X = 10*X
+	X[0,:] += 500
+	X[2,:] = 1000 - X[2,:]
+	cv2.line(image_ground, (int(X[0,0]), int(X[2,0])), (int(X[0,1]), int(X[2,1])), (0,180,255))
+	cv2.line(image_ground, (int(X[0,1]), int(X[2,1])), (int(X[0,3]), int(X[2,3])), (0,180,255))
+	cv2.line(image_ground, (int(X[0,3]), int(X[2,3])), (int(X[0,2]), int(X[2,2])), (0,180,255))
+	cv2.line(image_ground, (int(X[0,2]), int(X[2,2])), (int(X[0,0]), int(X[2,0])), (0,180,255))
+
+
+	return x
+
+
+def reconstruct_ground_X(u, v, KR_3x3_inv, C_3x1):
+	"""
+	"""
+	x_3x1 = np.asmatrix([[u], [v], [1.0]])
+	X_d_3x1 = KR_3x3_inv * x_3x1  # Direction of X from the camera center
+
+	# Intersect the ground plane
+	Xy = GROUND
+	lm = (Xy - C_3x1[1,0]) / X_d_3x1[1,0]
+	Xx = C_3x1[0,0] + lm * X_d_3x1[0,0]
+	Xz = C_3x1[2,0] + lm * X_d_3x1[2,0]
+
+	return np.asmatrix([[Xx],[Xy],[Xz]])
+
+
+def project_X_to_x(X, P_3x4):
+	"""
+	"""
+	X_4x1 = np.asmatrix([[X[0,0]], [X[1,0]], [X[2,0]], [1.0]])
+	x = P_3x4 * X_4x1;
+	x = x[0:2,0] / x[2,0];
 
 	return x
 
@@ -119,56 +163,56 @@ def reconstruct_3D_bb(fblx, fbly, fbrx, fbry, rblx, rbly, ftly, P_3x4, image, im
 	"""
 	P_4x4 = np.identity(4)
 	P_4x4[0:3, 0:4] = P_3x4
-	print(P_4x4)
+	# print(P_4x4)
 
 	KR_3x3_inv = np.linalg.inv(P_3x4[0:3,0:3])
 	C_3x1 = - KR_3x3_inv * P_3x4[0:3,3]
-	P_3x4_inv = np.asmatrix(np.zeros((3,4)))
-	P_3x4_inv[0:3,0:3] = KR_3x3_inv
-	P_3x4_inv[0:3,3] = C_3x1
+	# P_3x4_inv = np.asmatrix(np.zeros((3,4)))
+	# P_3x4_inv[0:3,0:3] = KR_3x3_inv
+	# P_3x4_inv[0:3,3] = C_3x1
 
-	print('Center check:')
-	print(P_3x4 * np.asmatrix([[C_3x1[0,0]], [C_3x1[1,0]], [C_3x1[2,0]], [1.0]]))
-
-	fbl_3x1 = np.asmatrix([[fblx], [fbly], [1.0]])
-
-	FBL_d_3x1 = KR_3x3_inv * fbl_3x1  # Direction of fbl from the camera center
+	# print('Center check:')
+	# print(P_3x4 * np.asmatrix([[C_3x1[0,0]], [C_3x1[1,0]], [C_3x1[2,0]], [1.0]]))
 
 
-	# # Try projecting back any point
-	# FBL = C_3x1 + 100*FBL_d_3x1
-	# FBL_4x1 = np.asmatrix(np.ones((4,1)))
-	# FBL_4x1[0:3,0] = FBL
-	# print(FBL_4x1)
+	FBL = reconstruct_ground_X(fblx, fbly, KR_3x3_inv, C_3x1)
+	FBR = reconstruct_ground_X(fbrx, fbry, KR_3x3_inv, C_3x1)
+	RBL = reconstruct_ground_X(rblx, rbly, KR_3x3_inv, C_3x1)
+	RBR = FBR + (RBL-FBL)
+	
+	print('Recovered 3D coordinates FBL: ' + str(FBL))
+	print('Recovered 3D coordinates FBR: ' + str(FBR))
+	print('Recovered 3D coordinates RBL: ' + str(RBL))
+	
+	fbl_r = project_X_to_x(FBL, P_3x4)
+	fbr_r = project_X_to_x(FBR, P_3x4)
+	rbl_r = project_X_to_x(RBL, P_3x4)
 
-	# x = P_3x4 * FBL_4x1
-	# x = x[0:2,0] / x[2,0];
-
-	# print(str(fblx) + ' ' + str(fbly))
-	# print(str(x[0,0]) + ' ' + str(x[1,0]))
-
+	print(str(fblx) + ', ' + str(fbly) + ' -> ' + str(fbl_r[0,0]) + ', ' + str(fbl_r[1,0]))
+	print(str(fbrx) + ', ' + str(fbry) + ' -> ' + str(fbr_r[0,0]) + ', ' + str(fbr_r[1,0]))
+	print(str(rblx) + ', ' + str(rbly) + ' -> ' + str(rbl_r[0,0]) + ', ' + str(rbl_r[1,0]))
 
 	# cv2.circle(image, (int(x[0,0]), int(x[1,0])), 10, (255,80,255), -1)
 	# cv2.circle(image, (int(fblx), int(fbly)), 5, (0,177,251), -1)
 
 
-	# Intersect the ground plane
-	FBLY = 2.39
-	lm = (FBLY - C_3x1[1,0]) / FBL_d_3x1[1,0]
-	FBLX = C_3x1[0,0] + lm * FBL_d_3x1[0,0]
-	FBLZ = C_3x1[2,0] + lm * FBL_d_3x1[2,0]
-
-	print('Recovered 3D coordinates fbl: ' + str(FBLX) + ' ' + str(FBLY) + ' ' + str(FBLZ))
-	
-	FBL_4x1 = np.asmatrix([[FBLX],[FBLY],[FBLZ],[1]])
-	x = P_3x4 * FBL_4x1;
-	x = x[0:2,0] / x[2,0];
-
-	print(str(fblx) + ' ' + str(fbly))
-	print(str(x[0,0]) + ' ' + str(x[1,0]))
-
-	cv2.circle(image, (int(x[0,0]), int(x[1,0])), 10, (255,80,255), -1)
-	cv2.circle(image, (int(fblx), int(fbly)), 5, (0,177,251), -1)
+	# Draw the bounding box to the ground plane
+	FBL = 10*FBL
+	FBL[0,:] += 500
+	FBL[2,:] = 1000 - FBL[2,:]
+	FBR = 10*FBR
+	FBR[0,:] += 500
+	FBR[2,:] = 1000 - FBR[2,:]
+	RBL = 10*RBL
+	RBL[0,:] += 500
+	RBL[2,:] = 1000 - RBL[2,:]
+	RBR = 10*RBR
+	RBR[0,:] += 500
+	RBR[2,:] = 1000 - RBR[2,:]
+	cv2.line(image_ground, (int(FBL[0,0]), int(FBL[2,0])), (int(FBR[0,0]), int(FBR[2,0])), (0,255,0), 2)
+	cv2.line(image_ground, (int(FBL[0,0]), int(FBL[2,0])), (int(RBL[0,0]), int(RBL[2,0])), (255,0,0), 2)
+	cv2.line(image_ground, (int(RBL[0,0]), int(RBL[2,0])), (int(RBR[0,0]), int(RBR[2,0])), (0,0,255))
+	cv2.line(image_ground, (int(FBR[0,0]), int(FBR[2,0])), (int(RBR[0,0]), int(RBR[2,0])), (255,0,0))
 
 
 
@@ -192,7 +236,8 @@ def process_image(path_image, path_label_file, path_calib_file):
 
 
 		image = cv2.imread(path_image)
-		image_ground = np.zeros((100, 100, 3), dtype=np.uint8)
+		image_ground = np.zeros((1000, 1000, 3), dtype=np.uint8)
+		cv2.line(image_ground, (500,0), (500,1000), (50,50,50), 2)
 
 		# Read the objects
 		for line in infile_label:
@@ -211,7 +256,7 @@ def process_image(path_image, path_label_file, path_calib_file):
 
 			# Extract image coordinates (positions) of 3D bounding box corners, the corners are
 			# in the following order: fbr, rbr, fbl, rbl, ftr, rtr, ftl, rtl
-			x = extract_3D_bb(data, P)
+			x = extract_3D_bb(data, P, image_ground)
 
 			min_uv = np.min(x, axis=1)  # xmin, ymin
 			max_uv = np.max(x, axis=1)  # xmax, ymax
