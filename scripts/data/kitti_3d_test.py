@@ -46,8 +46,11 @@ MAPPING = LMM.get_mapping('kitti')
 #                                            SETTINGS                                              # 
 ####################################################################################################
 
-# y coordinate of the ground plane
-GROUND = 2.1
+# Coefficients of the equation of the ground plane ax+by+cz+d=0
+# GP_1x4 = np.asmatrix([[-0.00272088,  0.83395045, -0.00562125, -1.49405822]])
+# GP_1x4 = np.asmatrix([[ 0.        ,  0.20962029,  0.        , -0.31233423]])
+GP_1x4 = np.asmatrix([[0,  1, 0, -2.1]])
+
 
 
 ####################################################################################################
@@ -134,10 +137,10 @@ def reconstruct_ground_X(u, v, KR_3x3_inv, C_3x1):
 	X_d_3x1 = KR_3x3_inv * x_3x1  # Direction of X from the camera center
 
 	# Intersect the ground plane
-	Xy = GROUND
-	lm = (Xy - C_3x1[1,0]) / X_d_3x1[1,0]
-	Xx = C_3x1[0,0] + lm * X_d_3x1[0,0]
-	Xz = C_3x1[2,0] + lm * X_d_3x1[2,0]
+	lm = - (GP_1x4[0,0:3]*C_3x1 + GP_1x4[0,3]) / (GP_1x4[0,0:3]*X_d_3x1)
+	Xx = C_3x1[0,0] + lm[0,0] * X_d_3x1[0,0]
+	Xy = C_3x1[1,0] + lm[0,0] * X_d_3x1[1,0]
+	Xz = C_3x1[2,0] + lm[0,0] * X_d_3x1[2,0]
 
 	return np.asmatrix([[Xx],[Xy],[Xz]])
 

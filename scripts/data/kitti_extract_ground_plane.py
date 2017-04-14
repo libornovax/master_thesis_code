@@ -65,7 +65,7 @@ def plane_3p(p1, p2, p3):
 	return np.asmatrix([normal[0,0], normal[1,0], normal[2,0], d])
 
 
-def show_X_and_gp(gp_X_4xn, inliers_mask, gp_1x4):
+def show_X_and_gp(gp_X_4xn, gp_1x4):
 	"""
 	Show a 3D plot of the estimated ground plane.
 	"""
@@ -73,13 +73,7 @@ def show_X_and_gp(gp_X_4xn, inliers_mask, gp_1x4):
 	ax = fig.add_subplot(111, projection='3d')
 	ax.set_aspect('equal')
 
-	outliers_mask = inliers_mask == False
-	outliers_4xn = np.array(np.compress(np.array(outliers_mask)[0], gp_X_4xn, axis=1))
-	ax.scatter(outliers_4xn[2,:], outliers_4xn[0,:], -outliers_4xn[1,:], color='red')
-
-	inliers_4xn = np.array(np.compress(np.array(inliers_mask)[0], gp_X_4xn, axis=1))
-	ax.scatter(inliers_4xn[2,:], inliers_4xn[0,:], -inliers_4xn[1,:], color='green')
-	
+	ax.scatter(np.array(gp_X_4xn[2,0:1000]), np.array(gp_X_4xn[0,0:1000]), np.array(-gp_X_4xn[1,0:1000]), color='red')
 
 	X = np.arange(-20, 20, 1)
 	Y = np.arange(-1, 10, 1)
@@ -97,9 +91,9 @@ def show_X_and_gp(gp_X_4xn, inliers_mask, gp_1x4):
 	ax.plot([3, -3], [-1.5, -1.5], [0,0], color='blue')
 	ax.plot([3, -3], [-1.5, -1.5], [-1.9,-1.9], color='blue')
 
-	ax.set_xlim(-10, 100)
-	ax.set_ylim(-10, 100)
-	ax.set_zlim(-10, 100)
+	ax.set_xlim(-100, 100)
+	ax.set_ylim(-100, 100)
+	ax.set_zlim(-100, 100)
 
 	ax.set_xlabel('Z')
 	ax.set_ylabel('X')
@@ -165,14 +159,14 @@ class GroundPlaneEstimator(object):
 			exit(1)
 
 		# Read each label file
-		i = 0
+		# i = 0
 		for f in filenames:
 			path_label_file = os.path.join(self.path_labels, f)
 
 			self._process_label_file(path_label_file)
 
-			i += 1
-			if i == 1000: break
+			# i += 1
+			# if i == 1000: break
 
 
 	def _process_label_file(self, path_label_file):
@@ -239,10 +233,9 @@ class GroundPlaneEstimator(object):
 		"""
 		num_points = len(self.gp_points)
 
-		# Variables for storing max number of inliers and the corresponding ground plane
+		# Variables for storing minimum distance sum from the estimated plane
 		dist2_sum_min = 99999999999999999
 		gp_1x4_max      = np.asmatrix(np.zeros((1,4)))
-		inliers_mask_max     = np.asmatrix(np.zeros((4,0)))
 
 		for i in range(RANSAC_ITERS):
 			rp = random.sample(range(0, num_points), 3)
@@ -258,27 +251,22 @@ class GroundPlaneEstimator(object):
 				print('WARNING: Solution not precise, skipping...')
 				continue
 
-
-			# Find and compute the number of inliers
+			# Compute the sum of distances from this plane
 			distances2 = np.power(gp_1x4 * self.gp_X_4xn, 2)
 			dist2_sum = np.sum(distances2, axis=1)
-			print(dist2_sum)
-			inliers_mask = distances2 < INLIER_TRHESHOLD*INLIER_TRHESHOLD
-			num_inliers = np.sum(inliers_mask, axis=1)[0,0]
 			
-			if num_inliers > num_inliers_max:
-				print('New max inliers found: ' + str(num_inliers))
-				num_inliers_max = num_inliers
+			if dist2_sum[0,0] < dist2_sum_min:
+				print('New min distance sum: ' + str(dist2_sum[0,0]))
+				dist2_sum_min = dist2_sum[0,0]
 				gp_1x4_max = gp_1x4
-				inliers_mask_max = inliers_mask
 
 
 		print('-- RANSAC FINISHED')
 		print('Estimated ground plane: ' + str(gp_1x4_max))
-		print('Number of inliers: ' + str(num_inliers_max) + ' out of ' + str(num_points))
+		print('Sum of distances: ' + str(dist2_sum_min) + ', ' + str(dist2_sum_min/num_points) + ' per point')
 
-		# Show a plot of the plane and inliers vs outliers
-		show_X_and_gp(self.gp_X_4xn, inliers_mask_max, gp_1x4_max)
+		# Show a plot of the plane
+		show_X_and_gp(self.gp_X_4xn, gp_1x4_max)
 
 		return gp_1x4_max
 
