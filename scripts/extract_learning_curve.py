@@ -147,10 +147,11 @@ class LearningCurvePlotter(object):
 			ln = skeys[i]
 			plt.plot(self.iters_train[si_train:],
 				     self.losses_train[ln][si_train:], label=ln+' train', color=colors[i])
-		for i in range(len(skeys)):
-			ln = skeys[i]
-			plt.plot(self.iters_valid[si_valid:], self.losses_valid[ln][si_valid:], 
-				     label=ln+' valid', color=colors[i], linestyle='--', linewidth=2)
+		if len(self.iters_valid) > 0:
+			for i in range(len(skeys)):
+				ln = skeys[i]
+				plt.plot(self.iters_valid[si_valid:], self.losses_valid[ln][si_valid:], 
+					     label=ln+' valid', color=colors[i], linestyle='--', linewidth=2)
 
 		# Limit axes
 		xmin, xmax, ymin, ymax = plt.axis()
