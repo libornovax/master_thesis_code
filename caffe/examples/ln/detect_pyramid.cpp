@@ -211,7 +211,7 @@ void runPyramidDetection (const std::string &path_prototxt, const std::string &p
                         for (int j = 0; j < acc_prob.cols; ++j)
                         {
                             float conf = acc_prob.at<float>(i, j);
-                            if (conf >= 0.7)
+                            if (conf >= 0.5)
                             {
                                 // Check if it is a local maximum
                                 if (i > 0)
@@ -242,7 +242,7 @@ void runPyramidDetection (const std::string &path_prototxt, const std::string &p
                                 cv::line(image, cv::Point(fblx, fbly), cv::Point(fblx, ftly), cv::Scalar(0, 0, 255));
                                 cv::line(image, cv::Point(fblx, fbly), cv::Point(rblx, rbly), cv::Scalar(0, 255, 0));
 
-                                cv::circle(image, cv::Point(4*j/s, 4*i/s), 2, cv::Scalar(0,255,0), -1);
+//                                cv::circle(image, cv::Point(4*j/s, 4*i/s), 2, cv::Scalar(0,255,0), -1);
                             }
                         }
                     }
