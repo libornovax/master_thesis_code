@@ -130,19 +130,30 @@ def extract_3D_bb(data, P, image_ground):
 	return x
 
 
-def reconstruct_ground_X(u, v, KR_3x3_inv, C_3x1):
+def reconstruct_X_in_plane(u, v, KR_3x3_inv, C_3x1, p_1x4):
 	"""
+	Reconstructs a point in 3D, which lies on the plane p_1x4 and projects to (u,v) in the image.
+
+	Input:
+		u, v:  Point coordinates in the image
+		p_1x4: np.matrix coefficients of ax+by+cz+d=0 plane equation
 	"""
 	x_3x1 = np.asmatrix([[u], [v], [1.0]])
 	X_d_3x1 = KR_3x3_inv * x_3x1  # Direction of X from the camera center
 
 	# Intersect the ground plane
-	lm = - (GP_1x4[0,0:3]*C_3x1 + GP_1x4[0,3]) / (GP_1x4[0,0:3]*X_d_3x1)
+	lm = - (p_1x4[0,0:3]*C_3x1 + p_1x4[0,3]) / (p_1x4[0,0:3]*X_d_3x1)
 	Xx = C_3x1[0,0] + lm[0,0] * X_d_3x1[0,0]
 	Xy = C_3x1[1,0] + lm[0,0] * X_d_3x1[1,0]
 	Xz = C_3x1[2,0] + lm[0,0] * X_d_3x1[2,0]
 
 	return np.asmatrix([[Xx],[Xy],[Xz]])
+
+
+def reconstruct_ground_X(u, v, KR_3x3_inv, C_3x1):
+	"""
+	"""
+	return reconstruct_X_in_plane(u, v, KR_3x3_inv, C_3x1, GP_1x4)
 
 
 def project_X_to_x(X, P_3x4):
@@ -218,7 +229,14 @@ def reconstruct_3D_bb(fblx, fbly, fbrx, fbry, rblx, rbly, ftly, P_3x4, image, im
 	cv2.line(image_ground, (int(FBR[0,0]), int(FBR[2,0])), (int(RBR[0,0]), int(RBR[2,0])), (255,0,0))
 
 
+	# Top of the 3D bounding box
+	n_F_3x1 = FBL - RBL  # Normal vector of the front side
+	d_F = - (n_F_3x1[0,0]*FBL[0,0] + n_F_3x1[1,0]*FBL[1,0] + n_F_3x1[2,0]*FBL[2,0])
 
+	FTL = reconstruct_X_in_plane(fblx, ftly, KR_3x3_inv, C_3x1, np.asmatrix([n_F_3x1[0,0], n_F_3x1[1,0], n_F_3x1[2,0], d_F]))
+
+	ftl_r = project_X_to_x(FTL, P_3x4)
+	cv2.circle(image, (int(ftl_r[0,0]), int(ftl_r[1,0])), 5, (255,80,255), -1)
 
 
 
