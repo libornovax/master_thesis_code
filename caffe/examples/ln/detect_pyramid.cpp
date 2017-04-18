@@ -203,7 +203,8 @@ void runPyramidDetection (const std::string &path_prototxt, const std::string &p
                     cv::minMaxLoc(acc_prob, 0, &mx);
                     std::cout << mx << std::endl;
 
-                    cv::imshow("Accumulator " + net->blob_names()[net->output_blob_indices()[0]] + " (" + std::to_string(s) + ")", acc_prob);
+                    cv::imshow("Accumulator " + net->blob_names()[net->output_blob_indices()[ai++]] + " (" + std::to_string(s) + ")", acc_prob);
+
 
                     // Draw detected 3D boxes
                     for (int i = 0; i < acc_prob.rows; ++i)
