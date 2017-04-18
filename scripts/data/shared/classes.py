@@ -6,6 +6,9 @@ __date__   = '12/02/2016'
 __author__ = 'Libor Novak'
 __email__  = 'novakli2@fel.cvut.cz'
 
+import numpy as np
+import geometry
+
 
 ####################################################################################################
 #                                             CLASSES                                              # 
@@ -125,4 +128,88 @@ class BB3D(object):
 			    + str(self.rbly) + '], ftly: ' + str(self.ftly) + ', label: ' + str(self.label) \
 			    + ', confidence: ' + str(self.confidence) + '}'
 
+
+
+class PGP(object):
+	"""
+	A 3x4 image projection matrix P and coefficients of the ground plane equation ax+by+cz+d=0. It
+	is to be read as one line from a PGP file.
+	"""
+	def __init__(self, p00, p01, p02, p03, p10, p11, p12, p13, p20, p21, p22, p23, a, b, c, d):
+		super(PGP, self).__init__()
+		
+		self.P_3x4  = np.asmatrix([[p00, p01, p02, p03], [p10, p11, p12, p13], [p20, p21, p22, p23]])
+		self.gp_1x4 = np.asmatrix([[a, b, c, d]])
+
+		# Compute the inverse matrix KR and the camera pose in the 3D world
+		self.KR_3x3_inv = np.linalg.inv(self.P_3x4[0:3,0:3])
+		self.C_3x1      = - self.KR_3x3_inv * self.P_3x4[0:3,3]
+
+
+	def reconstruct_X_ground(self, u, v):
+		"""
+		Reconstructs a point given by image coordinates (u,v) on the ground plane in 3D.
+
+		Input:
+			u, v: Point coordinates in the image
+		Returns:
+			X_3x1 point coordinates in the 3D world
+		"""
+		return geometry.reconstruct_X_in_plane(u, v, self.KR_3x3_inv, self.C_3x1, self.gp_1x4)
+
+
+	def project_X_to_x(self, X_3xn):
+		"""
+		Projects the point(s) in the 3D world to the image coordinates.
+
+		Input:
+			X_3xn: np.matrix of point coordinates in 3D, each column is one point
+		Returns:
+			x_2xn: Coordinates of the points' projections in the image
+		"""
+		return geometry.project_X_to_x(X_3xn, self.P_3x4)
+
+
+	def reconstruct_bb3d(self, bb3d):
+		"""
+		Reconstructs the 3D world coordinates of all 3D bounding box corners.
+
+		Input:
+			bb3d: A BB3D class instance
+		Returns:
+			X_3x8 np.matrix of 3D world coordinates of the 8 bounding box corners in the following
+			      order: FBL FBR RBR RBL FTL FTR RTR RTL
+		"""
+		# Reconstruct the corners, which lie in the ground plane
+		FBL_3x1 = self.reconstruct_X_ground(bb3d.fblx, bb3d.fbly)
+		FBR_3x1 = self.reconstruct_X_ground(bb3d.fbrx, bb3d.fbry)
+		RBL_3x1 = self.reconstruct_X_ground(bb3d.rblx, bb3d.rbly)
+		RBR_3x1 = FBR_3x1 + (RBL_3x1-FBL_3x1)
+
+		# Top of the 3D bounding box - reconstruct FTL and then just move all the other points
+		# We do this by intersecting the ray to FTL with the front side plane of the bounding
+		# box - i.e. extract the front side plane equation and then use it to reconstruct the FTL
+		n_F_3x1 = FBL_3x1 - RBL_3x1  # Normal vector of the front side
+		d_F = - (n_F_3x1[0,0]*FBL_3x1[0,0] + n_F_3x1[1,0]*FBL_3x1[1,0] + n_F_3x1[2,0]*FBL_3x1[2,0])
+		# Front plane
+		fp_1x4 = np.asmatrix([n_F_3x1[0,0], n_F_3x1[1,0], n_F_3x1[2,0], d_F])
+
+		FTL_3x1 = geometry.reconstruct_X_in_plane(bb3d.fblx, bb3d.ftly, self.KR_3x3_inv, 
+												  self.C_3x1, fp_1x4)
+		FTR_3x1 = FBR_3x1 + (FTL_3x1-FBL_3x1)
+		RTL_3x1 = RBL_3x1 + (FTL_3x1-FBL_3x1)
+		RTR_3x1 = RBR_3x1 + (FTL_3x1-FBL_3x1)
+
+		# Combine everything to the output matrix
+		X_3x8 = np.asmatrix(np.zeros((3, 8)))
+		X_3x8[:,0] = FBL_3x1
+		X_3x8[:,1] = FBR_3x1
+		X_3x8[:,2] = RBR_3x1
+		X_3x8[:,3] = RBL_3x1
+		X_3x8[:,4] = FTL_3x1
+		X_3x8[:,5] = FTR_3x1
+		X_3x8[:,6] = RTR_3x1
+		X_3x8[:,7] = RTL_3x1
+
+		return X_3x8
 
