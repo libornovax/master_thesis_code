@@ -108,10 +108,6 @@ def translate_file(path_calib, outfile):
 	# Get the list of all label files in the directory
 	filenames = [f for f in os.listdir(path_calib) if os.path.isfile(os.path.join(path_calib, f))]
 
-	if len(filenames) != 7481:
-		print('Wrong number (%d) of files in the KITTI dataset! Should be 7481.'%(len(filenames)))
-		return
-
 	# Read each file and its calibration matrix
 	for f in filenames:
 		process_calib_file(path_calib, f, outfile)
