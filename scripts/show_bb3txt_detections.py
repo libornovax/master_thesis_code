@@ -199,7 +199,7 @@ class DetectionBrowser(object):
 
 		if filename in iml:
 			# Plot the position of the camera into the world coordinates
-			if filename in self.pgps:
+			if self.pgps is not None and filename in self.pgps:
 				pgp = self.pgps[filename]
 				# Camera misplacement line
 				self.ax2.plot([pgp.C_3x1[0,0], pgp.C_3x1[0,0]], [-10, 150], color='#CCCCCC', linewidth=4)

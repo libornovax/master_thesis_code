@@ -81,7 +81,7 @@ namespace {
 
         // Check the area - if it is too small or too big throw it away
         double area = (a*a*h) / 2.0;
-        if (area < 2.0 || area > 5000) return false;
+        if (area < 1.0 || area > 5000) return false;
         return true;
     }
 

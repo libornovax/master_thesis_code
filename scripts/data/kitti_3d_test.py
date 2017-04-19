@@ -17,7 +17,7 @@ import numpy as np
 import cv2
 
 from mappings.utils import LabelMappingManager
-from shared.geometry import R3x3_y, t3x1, Rt4x4
+from shared.geometry import R3x3_y, t3x1, Rt4x4, reconstruct_X_in_plane, project_X_to_x
 
 
 ####################################################################################################
@@ -109,7 +109,7 @@ def extract_3D_bb(data, P, image_ground):
 	# Rotate the 3D box around y axis and translate it to the correct position in the camera frame
 	X = Rt4x4(R3x3_y(ry), t3x1(cx, cy, cz)) * X
 
-	print(X[:,0])
+	# print(X[:,0])
 
 	x = P * X
 	# x is in homogeneous coordinates -> get u, v
@@ -130,24 +130,24 @@ def extract_3D_bb(data, P, image_ground):
 	return x
 
 
-def reconstruct_X_in_plane(u, v, KR_3x3_inv, C_3x1, p_1x4):
-	"""
-	Reconstructs a point in 3D, which lies on the plane p_1x4 and projects to (u,v) in the image.
+# def reconstruct_X_in_plane(u, v, KR_3x3_inv, C_3x1, p_1x4):
+# 	"""
+# 	Reconstructs a point in 3D, which lies on the plane p_1x4 and projects to (u,v) in the image.
 
-	Input:
-		u, v:  Point coordinates in the image
-		p_1x4: np.matrix coefficients of ax+by+cz+d=0 plane equation
-	"""
-	x_3x1 = np.asmatrix([[u], [v], [1.0]])
-	X_d_3x1 = KR_3x3_inv * x_3x1  # Direction of X from the camera center
+# 	Input:
+# 		u, v:  Point coordinates in the image
+# 		p_1x4: np.matrix coefficients of ax+by+cz+d=0 plane equation
+# 	"""
+# 	x_3x1 = np.asmatrix([[u], [v], [1.0]])
+# 	X_d_3x1 = KR_3x3_inv * x_3x1  # Direction of X from the camera center
 
-	# Intersect the ground plane
-	lm = - (p_1x4[0,0:3]*C_3x1 + p_1x4[0,3]) / (p_1x4[0,0:3]*X_d_3x1)
-	Xx = C_3x1[0,0] + lm[0,0] * X_d_3x1[0,0]
-	Xy = C_3x1[1,0] + lm[0,0] * X_d_3x1[1,0]
-	Xz = C_3x1[2,0] + lm[0,0] * X_d_3x1[2,0]
+# 	# Intersect the ground plane
+# 	lm = - (p_1x4[0,0:3]*C_3x1 + p_1x4[0,3]) / (p_1x4[0,0:3]*X_d_3x1)
+# 	Xx = C_3x1[0,0] + lm[0,0] * X_d_3x1[0,0]
+# 	Xy = C_3x1[1,0] + lm[0,0] * X_d_3x1[1,0]
+# 	Xz = C_3x1[2,0] + lm[0,0] * X_d_3x1[2,0]
 
-	return np.asmatrix([[Xx],[Xy],[Xz]])
+# 	return np.asmatrix([[Xx],[Xy],[Xz]])
 
 
 def reconstruct_ground_X(u, v, KR_3x3_inv, C_3x1):
@@ -156,14 +156,14 @@ def reconstruct_ground_X(u, v, KR_3x3_inv, C_3x1):
 	return reconstruct_X_in_plane(u, v, KR_3x3_inv, C_3x1, GP_1x4)
 
 
-def project_X_to_x(X, P_3x4):
-	"""
-	"""
-	X_4x1 = np.asmatrix([[X[0,0]], [X[1,0]], [X[2,0]], [1.0]])
-	x = P_3x4 * X_4x1;
-	x = x[0:2,0] / x[2,0];
+# def project_X_to_x(X, P_3x4):
+# 	"""
+# 	"""
+# 	X_4x1 = np.asmatrix([[X[0,0]], [X[1,0]], [X[2,0]], [1.0]])
+# 	x = P_3x4 * X_4x1;
+# 	x = x[0:2,0] / x[2,0];
 
-	return x
+# 	return x
 
 
 def reconstruct_3D_bb(fblx, fbly, fbrx, fbry, rblx, rbly, ftly, P_3x4, image, image_ground):
