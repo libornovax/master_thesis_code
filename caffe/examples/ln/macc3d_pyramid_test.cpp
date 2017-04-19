@@ -9,6 +9,7 @@
 
 #include <caffe/caffe.hpp>
 #include "caffe/util/benchmark.hpp"
+#include "caffe/util/utils3d.hpp"
 
 // This code only works with OpenCV!
 #ifdef USE_OPENCV
@@ -25,42 +26,6 @@
 
 #include <boost/program_options.hpp>
 namespace po = boost::program_options;
-
-
-
-namespace {
-
-    struct BB3D
-    {
-        BB3D () {}
-        BB3D (const std::string &path_image, int label, double conf, double fblx, double fbly, double fbrx,
-              double fbry, double rblx, double rbly, double ftly)
-            : path_image(path_image),
-              label(label),
-              conf(conf),
-              fblx(fblx),
-              fbly(fbly),
-              fbrx(fbrx),
-              fbry(fbry),
-              rblx(rblx),
-              rbly(rbly),
-              ftly(ftly)
-        {
-        }
-
-        std::string path_image;
-        int label;
-        double conf;
-        double fblx;
-        double fbly;
-        double fbrx;
-        double fbry;
-        double rblx;
-        double rbly;
-        double ftly;
-    };
-
-}
 
 
 /**

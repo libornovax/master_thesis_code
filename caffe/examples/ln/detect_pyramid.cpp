@@ -7,6 +7,7 @@
 
 #include <caffe/caffe.hpp>
 #include "caffe/util/benchmark.hpp"
+#include "caffe/util/pgp.hpp"
 
 // This code only works with OpenCV!
 #ifdef USE_OPENCV
@@ -49,7 +50,7 @@ void wrapInputLayer (caffe::Blob<float>* input_layer, std::vector<cv::Mat> &out_
 
 
 void runPyramidDetection (const std::string &path_prototxt, const std::string &path_caffemodel,
-                          const std::string &path_image_list)
+                          const std::string &path_image_list, const std::string &path_pgp)
 {
 #ifdef CPU_ONLY
     caffe::Caffe::set_mode(caffe::Caffe::CPU);
@@ -71,6 +72,10 @@ void runPyramidDetection (const std::string &path_prototxt, const std::string &p
 
     CHECK_EQ(net->num_inputs(), 1) << "Network should have exactly one input.";
     CHECK_EQ(input_layer->shape(1), 3) << "Input layer must have 3 channels.";
+
+    // Load the P matrices and ground planes
+    std::map<std::string, PGP> pgps;
+    if (path_pgp != "") pgps = PGP::readPGPFile(path_pgp);
 
 
     // Prepare the input channels
@@ -96,6 +101,12 @@ void runPyramidDetection (const std::string &path_prototxt, const std::string &p
 
         timer.Stop();
         std::cout << "Time to read image: " << timer.MilliSeconds() << " ms" << std::endl;
+
+        const double GCW = 800;
+        const double GCH = 1200;
+        const double GCS = 10;
+        cv::Mat ground_canvas(GCH, GCW, CV_8UC3, cv::Scalar(255,255,255));
+        cv::line(ground_canvas, cv::Point(GCW/2, 0), cv::Point(GCW/2, GCH), cv::Scalar(200, 200, 200), 4);
 
         // Build the image pyramid and run detection on each scale of the pyramid
         timer.Start();
@@ -239,9 +250,47 @@ void runPyramidDetection (const std::string &path_prototxt, const std::string &p
                                 int rbly = acc_rbly.at<float>(i, j) / s;
                                 int ftly = acc_ftly.at<float>(i, j) / s;
 
-                                cv::line(image, cv::Point(fblx, fbly), cv::Point(fbrx, fbry), cv::Scalar(0, 0, 255));
-                                cv::line(image, cv::Point(fblx, fbly), cv::Point(fblx, ftly), cv::Scalar(0, 0, 255));
-                                cv::line(image, cv::Point(fblx, fbly), cv::Point(rblx, rbly), cv::Scalar(0, 255, 0));
+                                if (path_pgp != "")
+                                {
+                                    auto pgpi = pgps.find(line);
+                                    if (pgpi != pgps.end())
+                                    {
+                                        PGP pgp = (*pgpi).second;
+                                        BB3D bb3d("", 1, conf, fblx, fbly, fbrx, fbry, rblx, rbly, ftly);
+
+                                        // Reconstruct the 3D coordinates
+                                        cv::Mat X_3x8 = pgp.reconstructBB3D(bb3d);
+
+                                        cv::line(ground_canvas, cv::Point(GCS*X_3x8.at<double>(0,0)+GCW/2, GCH-GCS*X_3x8.at<double>(2,0)), cv::Point(GCS*X_3x8.at<double>(0,1)+GCW/2, GCH-GCS*X_3x8.at<double>(2,1)), cv::Scalar(0,255,0), 2);
+                                        cv::line(ground_canvas, cv::Point(GCS*X_3x8.at<double>(0,0)+GCW/2, GCH-GCS*X_3x8.at<double>(2,0)), cv::Point(GCS*X_3x8.at<double>(0,3)+GCW/2, GCH-GCS*X_3x8.at<double>(2,3)), cv::Scalar(255,0,0), 2);
+                                        cv::line(ground_canvas, cv::Point(GCS*X_3x8.at<double>(0,1)+GCW/2, GCH-GCS*X_3x8.at<double>(2,1)), cv::Point(GCS*X_3x8.at<double>(0,2)+GCW/2, GCH-GCS*X_3x8.at<double>(2,2)), cv::Scalar(255,0,0), 2);
+                                        cv::line(ground_canvas, cv::Point(GCS*X_3x8.at<double>(0,2)+GCW/2, GCH-GCS*X_3x8.at<double>(2,2)), cv::Point(GCS*X_3x8.at<double>(0,3)+GCW/2, GCH-GCS*X_3x8.at<double>(2,3)), cv::Scalar(0,0,255), 2);
+
+                                        // Project them back to image
+                                        cv::Mat x_2x8 = pgp.projectXtox(X_3x8);
+
+                                        // Front side
+                                        cv::line(image, cv::Point(x_2x8.at<double>(0,4), x_2x8.at<double>(1,4)), cv::Point(x_2x8.at<double>(0,5), x_2x8.at<double>(1,5)), cv::Scalar(0,255,0));
+                                        cv::line(image, cv::Point(x_2x8.at<double>(0,5), x_2x8.at<double>(1,5)), cv::Point(x_2x8.at<double>(0,1), x_2x8.at<double>(1,1)), cv::Scalar(0,255,0));
+                                        // Rear side
+                                        cv::line(image, cv::Point(x_2x8.at<double>(0,2), x_2x8.at<double>(1,2)), cv::Point(x_2x8.at<double>(0,3), x_2x8.at<double>(1,3)), cv::Scalar(0,0,255));
+                                        cv::line(image, cv::Point(x_2x8.at<double>(0,7), x_2x8.at<double>(1,7)), cv::Point(x_2x8.at<double>(0,3), x_2x8.at<double>(1,3)), cv::Scalar(0,0,255));
+                                        cv::line(image, cv::Point(x_2x8.at<double>(0,7), x_2x8.at<double>(1,7)), cv::Point(x_2x8.at<double>(0,6), x_2x8.at<double>(1,6)), cv::Scalar(0,0,255));
+                                        cv::line(image, cv::Point(x_2x8.at<double>(0,6), x_2x8.at<double>(1,6)), cv::Point(x_2x8.at<double>(0,2), x_2x8.at<double>(1,2)), cv::Scalar(0,0,255));
+                                        // Connections
+                                        cv::line(image, cv::Point(x_2x8.at<double>(0,4), x_2x8.at<double>(1,4)), cv::Point(x_2x8.at<double>(0,7), x_2x8.at<double>(1,7)), cv::Scalar(255,0,0));
+                                        cv::line(image, cv::Point(x_2x8.at<double>(0,5), x_2x8.at<double>(1,5)), cv::Point(x_2x8.at<double>(0,6), x_2x8.at<double>(1,6)), cv::Scalar(255,0,0));
+                                        cv::line(image, cv::Point(x_2x8.at<double>(0,1), x_2x8.at<double>(1,1)), cv::Point(x_2x8.at<double>(0,2), x_2x8.at<double>(1,2)), cv::Scalar(255,0,0));
+                                    }
+                                    else
+                                    {
+                                        std::cout << "WARNING: PGP entry not found for " << line << std::endl;
+                                    }
+                                }
+
+                                cv::line(image, cv::Point(fblx, fbly), cv::Point(fbrx, fbry), cv::Scalar(0, 255, 0));
+                                cv::line(image, cv::Point(fblx, fbly), cv::Point(fblx, ftly), cv::Scalar(0, 255, 0));
+                                cv::line(image, cv::Point(fblx, fbly), cv::Point(rblx, rbly), cv::Scalar(255, 0, 0));
 
 //                                cv::circle(image, cv::Point(4*j/s, 4*i/s), 2, cv::Scalar(0,255,0), -1);
                             }
@@ -255,6 +304,7 @@ void runPyramidDetection (const std::string &path_prototxt, const std::string &p
         std::cout << "Time to detection: " << timer.MilliSeconds() << " ms" << std::endl;
 
         cv::imshow("Image", image);
+        if (path_pgp != "") cv::imshow("XZ plane", ground_canvas);
         cv::waitKey(0);
     }
 }
@@ -268,6 +318,7 @@ struct ProgramArguments
     std::string path_prototxt;
     std::string path_caffemodel;
     std::string path_image_list;
+    std::string path_pgp;
 };
 
 
@@ -286,12 +337,15 @@ void parseArguments (int argc, char** argv, ProgramArguments &pa)
              "Weight file of the network (*.caffemodel)")
             ("image_list", po::value<std::string>(&pa.path_image_list)->required(),
              "Path to a TXT file with paths to the images to be tested")
+            ("pgp", po::value<std::string>(&pa.path_pgp)->default_value(""),
+             "Path to a PGP file with calibration matrices and ground planes")
         ;
 
         po::positional_options_description positional;
         positional.add("prototxt", 1);
         positional.add("caffemodel", 1);
         positional.add("image_list", 1);
+        positional.add("pgp", 1);
 
 
         // Parse the input arguments
@@ -299,7 +353,7 @@ void parseArguments (int argc, char** argv, ProgramArguments &pa)
         po::store(po::command_line_parser(argc, argv).options(desc).positional(positional).run(), vm);
 
         if (vm.count("help")) {
-            std::cout << "Usage: ./detect_accumulator path/f.prototxt path/f.caffemodel path/image_list.txt\n";
+            std::cout << "Usage: ./detect_pyramid path/f.prototxt path/f.caffemodel path/image_list.txt (path/calib.pgp)\n";
             std::cout << desc;
             exit(EXIT_SUCCESS);
         }
@@ -321,6 +375,11 @@ void parseArguments (int argc, char** argv, ProgramArguments &pa)
             std::cerr << "ERROR: File '" << pa.path_image_list << "' does not exist!" << std::endl;
             exit(EXIT_FAILURE);
         }
+        if (pa.path_pgp != "" && !boost::filesystem::exists(pa.path_pgp))
+        {
+            std::cerr << "ERROR: File '" << pa.path_pgp << "' does not exist!" << std::endl;
+            exit(EXIT_FAILURE);
+        }
     }
     catch(std::exception& e)
     {
@@ -338,7 +397,7 @@ int main (int argc, char** argv)
     parseArguments(argc, argv, pa);
 
 
-    runPyramidDetection(pa.path_prototxt, pa.path_caffemodel, pa.path_image_list);
+    runPyramidDetection(pa.path_prototxt, pa.path_caffemodel, pa.path_image_list, pa.path_pgp);
 
 
     return EXIT_SUCCESS;
