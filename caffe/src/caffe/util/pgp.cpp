@@ -48,6 +48,8 @@ std::map<std::string, PGP> PGP::readPGPFile (const std::string &path_pgp)
         pgp_map.insert(std::map<std::string, PGP>::value_type(filename, PGP(P_3x4, gp_1x4)));
     }
 
+    infile.close();
+
     return pgp_map;
 }
 

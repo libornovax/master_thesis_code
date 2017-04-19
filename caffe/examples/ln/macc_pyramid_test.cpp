@@ -8,6 +8,7 @@
 
 #include <caffe/caffe.hpp>
 #include "caffe/util/benchmark.hpp"
+#include "caffe/util/utils_bb.hpp"
 
 // This code only works with OpenCV!
 #ifdef USE_OPENCV
@@ -38,60 +39,6 @@ namespace po = boost::program_options;
 
 
 namespace {
-
-    struct BB2D
-    {
-        BB2D () {}
-        BB2D (const std::string &path_image, int label, double conf, double xmin, double ymin, double xmax,
-              double ymax)
-            : path_image(path_image),
-              label(label),
-              conf(conf),
-              xmin(xmin),
-              ymin(ymin),
-              xmax(xmax),
-              ymax(ymax)
-        {
-            // Check ordder of min and max
-            if (this->xmin > this->xmax)
-            {
-                double temp = this->xmin;
-                this->xmin = this->xmax;
-                this->xmax = temp;
-            }
-            if (this->ymin > this->ymax)
-            {
-                double temp = this->ymin;
-                this->ymin = this->ymax;
-                this->ymax = temp;
-            }
-        }
-
-        std::string path_image;
-        int label;
-        double conf;
-        double xmin;
-        double ymin;
-        double xmax;
-        double ymax;
-    };
-
-
-    /**
-     * @brief Compute intersection over union of 2 bounding boxes
-     * @return Intersection over union
-     */
-    double iou (const BB2D &bb1, const BB2D &bb2)
-    {
-        double iw = std::max(0.0, std::min(bb1.xmax, bb2.xmax) - std::max(bb1.xmin, bb2.xmin));
-        double ih = std::max(0.0, std::min(bb1.ymax, bb2.ymax) - std::max(bb1.ymin, bb2.ymin));
-
-        double area1 = (bb1.xmax-bb1.xmin) * (bb1.ymax-bb1.ymin);
-        double area2 = (bb2.xmax-bb2.xmin) * (bb2.ymax-bb2.ymin);
-        double iarea = iw * ih;
-
-        return iarea / (area1+area2 - iarea);
-    }
 
 
 #ifndef BASIC_NON_MAXIMA_SUPPRESSION
@@ -125,7 +72,7 @@ namespace {
      */
     double similarity (const BB2D &bb1, const BB2D &bb2)
     {
-        return iou(bb1, bb2);
+        return iou2d(bb1, bb2);
     }
 #endif
 
@@ -194,10 +141,10 @@ std::vector<BB2D> extract2DBoundingBoxes (caffe::Blob<float> *output, const std:
                 }
 
                 // Ok, this is a local maximum
-                int xmin = acc_xmin.at<float>(i, j) / scale;
-                int ymin = acc_ymin.at<float>(i, j) / scale;
-                int xmax = acc_xmax.at<float>(i, j) / scale;
-                int ymax = acc_ymax.at<float>(i, j) / scale;
+                double xmin = acc_xmin.at<float>(i, j) / scale;
+                double ymin = acc_ymin.at<float>(i, j) / scale;
+                double xmax = acc_xmax.at<float>(i, j) / scale;
+                double ymax = acc_ymax.at<float>(i, j) / scale;
 
                 bounding_boxes.emplace_back(path_image, 1, conf, xmin, ymin, xmax, ymax);
             }
@@ -290,7 +237,7 @@ std::vector<BB2D> nonMaximaSuppression (std::vector<BB2D> &bbs)
             // Check intersection with all remaining bounding boxes
             for (int j = i; j < bbs.size(); ++j)
             {
-                if (active[j] && iou(bbs_out.back(), bbs[j]) > IOU_THRESHOLD)
+                if (active[j] && iou2d(bbs_out.back(), bbs[j]) > IOU_THRESHOLD)
                 {
 //                    bbs_out[bbs_out.size()-1] = merge_bbs(bbs[j], bbs_out[bbs_out.size()-1]);
                     active[j] = false;

@@ -11,41 +11,6 @@
 #include <opencv2/core/core.hpp>
 
 
-/**
- * @brief The BB3D struct
- * Struct representing a detected 3D bounding box (its 6+1 coordinates needed for reconstruction in 3D)
- */
-struct BB3D
-{
-    BB3D () {}
-    BB3D (const std::string &path_image, int label, double conf, double fblx, double fbly, double fbrx,
-          double fbry, double rblx, double rbly, double ftly)
-        : path_image(path_image),
-          label(label),
-          conf(conf),
-          fblx(fblx),
-          fbly(fbly),
-          fbrx(fbrx),
-          fbry(fbry),
-          rblx(rblx),
-          rbly(rbly),
-          ftly(ftly)
-    {
-    }
-
-    std::string path_image;
-    int label;
-    double conf;
-    double fblx;
-    double fbly;
-    double fbrx;
-    double fbry;
-    double rblx;
-    double rbly;
-    double ftly;
-};
-
-
 namespace geometry {
 
     /**

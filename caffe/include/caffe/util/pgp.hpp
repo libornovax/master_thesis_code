@@ -11,6 +11,7 @@
 #include <opencv2/core/core.hpp>
 #include <map>
 #include "utils3d.hpp"
+#include "utils_bb.hpp"
 
 
 /**
