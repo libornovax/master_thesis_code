@@ -81,7 +81,7 @@ namespace {
 
         // Check the area - if it is too small or too big throw it away
         double area = (a*a*h) / 2.0;
-        if (area < 1.0 || area > 5000) return false;
+        if (area < 1.5 || area > 7500) return false;
         return true;
     }
 
@@ -112,7 +112,7 @@ void wrapInputLayer (caffe::Blob<float>* input_layer, std::vector<cv::Mat> &out_
 
 
 std::vector<BB3D> extract3DBoundingBoxes (caffe::Blob<float> *output, const std::string &path_image,
-                                          double scale, const PGP *pgp_p)
+                                          double scale, const PGP *pgp_p, bool size_filter)
 {
     std::vector<BB3D> bounding_boxes;
 
@@ -179,7 +179,7 @@ std::vector<BB3D> extract3DBoundingBoxes (caffe::Blob<float> *output, const std:
 
                     // Check if the bounding box is large enough - its bottom trapezoid should be of
                     // reasonable size
-                    if (!checkBBSize(X_3x8)) continue;
+                    if (size_filter && !checkBBSize(X_3x8)) continue;
 
                     // Extract the 2D bounding box - project back the 3D one and find extremes
                     cv::Mat x_2x8 = pgp_p->projectXtox(X_3x8);
@@ -211,7 +211,7 @@ std::vector<BB3D> extract3DBoundingBoxes (caffe::Blob<float> *output, const std:
 
 std::vector<BB3D> detectObjects (const std::string &path_image, const std::vector<double> &scales,
                                  const std::shared_ptr<caffe::Net<float>> &net,
-                                 const std::map<std::string, PGP> &pgps)
+                                 const std::map<std::string, PGP> &pgps, bool size_filter)
 {
 #ifdef MEASURE_TIME
     caffe::CPUTimer timer;
@@ -273,7 +273,7 @@ std::vector<BB3D> detectObjects (const std::string &path_image, const std::vecto
 
         for (caffe::Blob<float>* output: net->output_blobs())
         {
-            std::vector<BB3D> new_bbs = extract3DBoundingBoxes(output, path_image, s, pgp_p);
+            std::vector<BB3D> new_bbs = extract3DBoundingBoxes(output, path_image, s, pgp_p, size_filter);
             bounding_boxes.insert(bounding_boxes.end(), new_bbs.begin(), new_bbs.end());
         }
     }
@@ -337,7 +337,7 @@ void writeBoundingBoxes (const std::vector<BB3D> &bbs, std::ofstream &fout)
 
 void runPyramidDetection (const std::string &path_prototxt, const std::string &path_caffemodel,
                           const std::string &path_image_list, const std::string &path_out,
-                          const std::string &path_pgp)
+                          const std::string &path_pgp, bool size_filter)
 {
 #ifdef CPU_ONLY
     caffe::Caffe::set_mode(caffe::Caffe::CPU);
@@ -388,7 +388,7 @@ void runPyramidDetection (const std::string &path_prototxt, const std::string &p
         CHECK(boost::filesystem::exists(line)) << "Image '" << line << "' not found!";
 
         // Detect bbs on the image
-        std::vector<BB3D> bbs = detectObjects(line, scales, net, pgps);
+        std::vector<BB3D> bbs = detectObjects(line, scales, net, pgps, size_filter);
 
         // Save the bounding boxes before NMS to a BBTXT file
         writeBoundingBoxes(bbs, fout);
@@ -424,6 +424,7 @@ struct ProgramArguments
     std::string path_image_list;
     std::string path_out;
     std::string path_pgp;
+    bool size_filter;
 };
 
 
@@ -446,6 +447,8 @@ void parseArguments (int argc, char** argv, ProgramArguments &pa)
              "Path to the output BB3TXT file")
             ("pgp", po::value<std::string>(&pa.path_pgp)->default_value(""),
              "Path to a PGP file with calibration matrices and ground planes")
+            ("size_filter", po::bool_switch(&pa.size_filter)->default_value(false),
+             "Turns on filtering of all bounding boxes, which are too small")
         ;
 
         po::positional_options_description positional;
@@ -461,7 +464,7 @@ void parseArguments (int argc, char** argv, ProgramArguments &pa)
         po::store(po::command_line_parser(argc, argv).options(desc).positional(positional).run(), vm);
 
         if (vm.count("help")) {
-            std::cout << "Usage: ./macc3d_pyramid_test path/f.prototxt path/f.caffemodel path/image_list.txt path/out.bb3txt path/calib.pgp\n";
+            std::cout << "Usage: ./macc3d_pyramid_test path/f.prototxt path/f.caffemodel path/image_list.txt path/out.bb3txt (path/calib.pgp)\n";
             std::cout << desc;
             exit(EXIT_SUCCESS);
         }
@@ -511,8 +514,8 @@ int main (int argc, char** argv)
     ProgramArguments pa;
     parseArguments(argc, argv, pa);
 
-
-    runPyramidDetection(pa.path_prototxt, pa.path_caffemodel, pa.path_image_list, pa.path_out, pa.path_pgp);
+std::cout << pa.size_filter << std::endl;
+    runPyramidDetection(pa.path_prototxt, pa.path_caffemodel, pa.path_image_list, pa.path_out, pa.path_pgp, pa.size_filter);
 
 
     return EXIT_SUCCESS;
