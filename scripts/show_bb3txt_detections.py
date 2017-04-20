@@ -18,12 +18,12 @@ __email__  = 'novakli2@fel.cvut.cz'
 
 import argparse
 import os
-import numpy as np
 from matplotlib import pyplot as plt
 import matplotlib.image as mpimg
 import matplotlib.patches as patches
 
 from data.shared.bb3txt import load_bb3txt
+from data.shared.pgp import load_pgp
 from data.mappings.utils import LabelMappingManager
 
 
@@ -39,7 +39,7 @@ CATEGORIES = [
 
 # Colors of the bounding boxes of the categories
 # COLORS = [plt.cm.gist_ncar(i) for i in np.linspace(0, 1, len(CATEGORIES))]
-COLORS = ['r', 'b']
+COLORS = ['#3399FF', '#FF33CC']
 
 # Initialize the LabelMappingManager
 LMM = LabelMappingManager()
@@ -59,7 +59,7 @@ class DetectionBrowser(object):
 	"""
 	"""
 	def __init__(self, path_detections, detections_mapping, confidence,
-				 path_gt=None, gt_mapping=None, path_datasets=None):
+				 path_gt=None, gt_mapping=None, path_datasets=None, path_pgp=None):
 		"""
 		Input:
 			path_detections:    Path to the BB3TXT file with detections
@@ -69,6 +69,8 @@ class DetectionBrowser(object):
 			gt_mapping:         Name of the mapping of the path_gt BB3TXT file (optional)
 			path_datasets:      Path to the "datasets" folder on this machine, replaces the path
 								that is in the BB3TXT files if provided
+			path_pgp:           Path to the PGP file with image projection matrices and ground plane
+			                    equations
 		"""
 		super(DetectionBrowser, self).__init__()
 		
@@ -88,6 +90,13 @@ class DetectionBrowser(object):
 		else:
 			self.iml_gt     = None
 			self.gt_mapping = None
+
+
+		if path_pgp is not None:
+			print('-- Loading PGP: ' + path_pgp)
+			self.pgps = load_pgp(path_pgp)
+		else:
+			self.pgps = None
 
 		# Initialize the cursor to the first image
 		self.cursor = 0
@@ -157,16 +166,24 @@ class DetectionBrowser(object):
 			img = mpimg.imread(self.file_list[self.cursor])
 
 		# Render
-		self.ax.cla()
-		self.ax.imshow(img)
+		self.ax1.cla()
+		if self.ax2 is not None: self.ax2.cla()
+		self.ax1.imshow(img)
+
+		self.ax1.set_xlim([0, img.shape[1]])
+		self.ax1.set_ylim([img.shape[0], 0])
+		if self.ax2 is not None: self.ax2.set_xlim([-40, 40])
+		if self.ax2 is not None: self.ax2.set_ylim([-5, 140])
 
 		if self.iml_gt is not None:
 			self._render_3d_boxes(self.iml_gt, self.gt_mapping, gt=True)
 		self._render_3d_boxes(self.iml_detections, self.detections_mapping)
 
-		plt.title('[' + str(self.cursor) + '/' + str(len(self.file_list)) + '] ' + self.file_list[self.cursor] + ' (((' + str(self.confidence) + ')))')
-		plt.axis('off')
+		self.fig.suptitle('[' + str(self.cursor) + '/' + str(len(self.file_list)) + '] ' + self.file_list[self.cursor] + ' (((' + str(self.confidence) + ')))')
+		self.ax1.set_axis_off()
+		if self.ax2 is not None: self.ax2.set_aspect('equal')
 		self.fig.canvas.draw()
+		plt.subplots_adjust(left=0.0, right=1.0, top=1.0, bottom=0.0)
 
 
 	def _render_3d_boxes(self, iml, mapping, gt=False):
@@ -181,6 +198,12 @@ class DetectionBrowser(object):
 		filename = self.file_list[self.cursor]
 
 		if filename in iml:
+			# Plot the position of the camera into the world coordinates
+			if self.pgps is not None and filename in self.pgps:
+				pgp = self.pgps[filename]
+				# Camera misplacement line
+				self.ax2.plot([pgp.C_3x1[0,0], pgp.C_3x1[0,0]], [-10, 150], color='#CCCCCC', linewidth=4)
+
 			for bb in iml[filename]:
 				if mapping[bb.label] in CATEGORIES and (gt or bb.confidence >= self.confidence):
 					# Index of the category in CATEGORIES
@@ -190,14 +213,50 @@ class DetectionBrowser(object):
 					rect = patches.Rectangle((bb.bb2d.xmin, bb.bb2d.ymin), bb.bb2d.width(), 
 											  bb.bb2d.height(), linewidth=1, edgecolor=color,
 											  facecolor='none')
-					self.ax.add_patch(rect)
+					self.ax1.add_patch(rect)
 
-					self.ax.plot([bb.fblx, bb.fbrx], [bb.fbly, bb.fbry], color=color, linewidth=2)
-					self.ax.plot([bb.fblx, bb.fblx], [bb.fbly, bb.ftly], color=color, linewidth=2)
-					self.ax.plot([bb.fblx, bb.rblx], [bb.fbly, bb.rbly], color='g', linewidth=2)
+					if self.pgps is not None:
+						# We have image projection matrices and ground plane - reconstruct the whole
+						# 3d box
+						if filename in self.pgps:
+							pgp = self.pgps[filename]
+
+							# Get all 4 bounding box corners in 3D (FBL FBR RBR RBL FTL FTR RTR RTL)
+							X_3x8 = pgp.reconstruct_bb3d(bb)
+
+							# Draw bb on the xz plane
+							self.ax2.plot([X_3x8[0,0], X_3x8[0,1]], [X_3x8[2,0], X_3x8[2,1]], color='#00FF00', linewidth=2)
+							self.ax2.plot([X_3x8[0,0], X_3x8[0,3]], [X_3x8[2,0], X_3x8[2,3]], color=color, linewidth=2)
+							self.ax2.plot([X_3x8[0,1], X_3x8[0,2]], [X_3x8[2,1], X_3x8[2,2]], color=color, linewidth=2)
+							self.ax2.plot([X_3x8[0,2], X_3x8[0,3]], [X_3x8[2,2], X_3x8[2,3]], color='#FF0000', linewidth=2)
+
+							# Project them back to image
+							x_2x8 = pgp.project_X_to_x(X_3x8)
+
+							# Plot front side
+							self.ax1.plot([x_2x8[0,4], x_2x8[0,5]], [x_2x8[1,4], x_2x8[1,5]], color='g', linewidth=2)
+							self.ax1.plot([x_2x8[0,5], x_2x8[0,1]], [x_2x8[1,5], x_2x8[1,1]], color='g', linewidth=2)
+							# Plot rear side
+							self.ax1.plot([x_2x8[0,2], x_2x8[0,3]], [x_2x8[1,2], x_2x8[1,3]], color='r', linewidth=2)
+							self.ax1.plot([x_2x8[0,7], x_2x8[0,3]], [x_2x8[1,7], x_2x8[1,3]], color='r', linewidth=2)
+							self.ax1.plot([x_2x8[0,7], x_2x8[0,6]], [x_2x8[1,7], x_2x8[1,6]], color='r', linewidth=2)
+							self.ax1.plot([x_2x8[0,6], x_2x8[0,2]], [x_2x8[1,6], x_2x8[1,2]], color='r', linewidth=2)
+							# Plot connections
+							self.ax1.plot([x_2x8[0,4], x_2x8[0,7]], [x_2x8[1,4], x_2x8[1,7]], color=color, linewidth=2)
+							self.ax1.plot([x_2x8[0,5], x_2x8[0,6]], [x_2x8[1,5], x_2x8[1,6]], color=color, linewidth=2)
+							self.ax1.plot([x_2x8[0,1], x_2x8[0,2]], [x_2x8[1,1], x_2x8[1,2]], color=color, linewidth=2)
+
+						else:
+							print('WARNING: PGP entry not found for image: "' + filename + '"')
+						
+					
+					# Plot the available corners
+					self.ax1.plot([bb.fblx, bb.fbrx], [bb.fbly, bb.fbry], color='g', linewidth=2)
+					self.ax1.plot([bb.fblx, bb.fblx], [bb.fbly, bb.ftly], color='g', linewidth=2)
+					self.ax1.plot([bb.fblx, bb.rblx], [bb.fbly, bb.rbly], color=color, linewidth=2)
 
 					txt = mapping[bb.label] if gt else mapping[bb.label] + ' %.3f'%(bb.confidence)
-					self.ax.text(bb.fblx, bb.ftly-5, txt, fontsize=15, color=color)
+					self.ax1.text(bb.fblx, bb.ftly-5, txt, fontsize=15, color=color)
 
 
 	def browse(self, offset=0):
@@ -211,7 +270,12 @@ class DetectionBrowser(object):
 
 		# Create the interactive window
 		self.fig = plt.figure()
-		self.ax = self.fig.add_subplot(111)
+		if self.pgps is not None:
+			self.ax1 = plt.subplot2grid((1,3), (0,0), colspan=2)
+			self.ax2 = plt.subplot2grid((1,3), (0,2))
+		else:
+			self.ax1 = plt.subplot2grid((1,1), (0,0))
+			self.ax2 = None
 		self.fig.canvas.mpl_connect('key_press_event', self._on_key_press_event)
 
 		self._render()
@@ -272,12 +336,17 @@ def parse_arguments():
 						help='Path to the "datasets" folder on this machine - will be used to ' \
 						'replace the path from the test and gt BB3TXT files so we could show the ' \
 						'images even if the test was carried out on a different PC')
+	parser.add_argument('--path_pgp', type=str, default=None,
+						help='Path to the PGP file with image projection matrices and ground ' \
+						'plane equations. This allows showing the whole 3D bounding box with ' \
+						'projection to the xz plane')
 
 	args = parser.parse_args()
 
 	if not check_path(args.path_detections) or \
 			(args.path_gt is not None and not check_path(args.path_gt)) or \
-			(args.path_datasets is not None and not check_path(args.path_datasets, True)):
+			(args.path_datasets is not None and not check_path(args.path_datasets, True)) or \
+			(args.path_pgp is not None and not check_path(args.path_pgp)):
 		parser.print_help()
 		exit(1)
 
@@ -294,7 +363,7 @@ def main():
 	print('-- DETECTION BROWSER')
 
 	browser = DetectionBrowser(args.path_detections, args.detections_mapping, args.confidence,
-							   args.path_gt, args.gt_mapping, args.path_datasets)
+							   args.path_gt, args.gt_mapping, args.path_datasets, args.path_pgp)
 	browser.browse()
 
 
