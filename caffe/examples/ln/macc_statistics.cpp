@@ -147,13 +147,15 @@ void histogramOfCoords (caffe::Blob<float> *output, int a, const std::vector<BB2
     static std::vector<double> scales;
     if (size_bounds.size() == 0)
     {
-        // WARNING! These are size bounds for "macc_0.3_r2_x2_to_x8_s2_kitti"!!
+        // WARNING! These are size bounds for "macc_0.3_r2_x2_to_x16"!!
         size_bounds.emplace_back(22.25, 55.5);
         size_bounds.emplace_back(44.5, 111.0);
         size_bounds.emplace_back(89.0, 222.0);
+        size_bounds.emplace_back(178.0, 444.0);
         scales.push_back(2.0);
         scales.push_back(4.0);
         scales.push_back(8.0);
+        scales.push_back(16.0);
     }
     cv::Mat acc_gt_prob(output->shape(2), output->shape(3), CV_32FC1, cv::Scalar(0.0f));
     for (const BB2D &gt_bb: gt_bbs)
