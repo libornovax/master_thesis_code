@@ -352,7 +352,7 @@ void runStatisticsComputation (const std::string &path_prototxt, const std::stri
             cv::line(chs[0], cv::Point(0,chs[0].rows/2), cv::Point(chs[0].cols, chs[0].rows/2), cv::Scalar(0.5));
             cv::line(chs[0], cv::Point(0,0), cv::Point(chs[0].cols, chs[0].rows), cv::Scalar(0.5));
             cv::Mat comb_wh; cv::merge(chs, comb_wh);
-            cv::imshow("P(BB|CAR_GT) WxH " + std::to_string(i), comb_wh);
+//            cv::imshow("P(BB|CAR_GT) WxH " + std::to_string(i), comb_wh);
             cv::imwrite(path_out + "/hist_wh_bb_g_car_notcar" + net->blob_names()[net->output_blob_indices()[i]] + ".png", comb_wh*255);
         }
 
