@@ -43,6 +43,25 @@ struct BB2D
         }
     }
 
+
+    double width () const
+    {
+        return this->xmax - this->xmin;
+    }
+
+
+    double height () const
+    {
+        return this->ymax - this->ymin;
+    }
+
+
+    cv::Point2d center () const
+    {
+        return cv::Point2d((this->xmin+this->xmax)/2.0, (this->ymin+this->ymax)/2.0);
+    }
+
+
     std::string path_image;
     int label;
     double conf;

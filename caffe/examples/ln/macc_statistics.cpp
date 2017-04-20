@@ -7,6 +7,7 @@
 //
 
 #include <caffe/caffe.hpp>
+#include "caffe/util/bbtxt.hpp"
 
 // This code only works with OpenCV!
 #ifdef USE_OPENCV
@@ -136,8 +137,37 @@ void wrapInputLayer (caffe::Blob<float>* input_layer, std::vector<cv::Mat> &out_
 }
 
 
-void histogramOfCoordsOfNegative (caffe::Blob<float> *output, int a)
+void histogramOfCoords (caffe::Blob<float> *output, int a, const std::vector<BB2D> &gt_bbs)
 {
+    // Build probabilistic target (ground truth) accumulator - we need it to determine positive and negative
+    // pixels
+    static std::vector<std::pair<double, double>> size_bounds;
+    static std::vector<double> scales;
+    if (size_bounds.size() == 0)
+    {
+        // WARNING! These are size bounds for "macc_0.3_r2_x2_to_x8_s2_kitti"!!
+        size_bounds.emplace_back(22.25, 55.5);
+        size_bounds.emplace_back(44.5, 111.0);
+        size_bounds.emplace_back(89.0, 222.0);
+        scales.push_back(2.0);
+        scales.push_back(4.0);
+        scales.push_back(8.0);
+    }
+    cv::Mat acc_gt_prob(output->shape(2), output->shape(3), CV_32FC1, cv::Scalar(0.0f));
+    for (const BB2D &gt_bb: gt_bbs)
+    {
+        double size = std::max(gt_bb.width(), gt_bb.height());
+        if (size > size_bounds[a].first && size < size_bounds[a].second)
+        {
+            // This ground truth should be detected by this accumulator
+            cv::Point2d co = gt_bb.center();
+            cv::circle(acc_gt_prob, cv::Point(co.x/scales[a], co.y/scales[a]), 3, cv::Scalar(1.0f), -1);
+        }
+    }
+
+//    cv::imshow("gt acc " + std::to_string(a), acc_gt_prob);
+
+
     float *data_output = output->mutable_cpu_data();
 
     // 2D bounding box
@@ -147,31 +177,34 @@ void histogramOfCoordsOfNegative (caffe::Blob<float> *output, int a)
     cv::Mat acc_xmax(output->shape(2), output->shape(3), CV_32FC1, data_output+output->offset(0, 3));
     cv::Mat acc_ymax(output->shape(2), output->shape(3), CV_32FC1, data_output+output->offset(0, 4));
 
+//    cv::imshow("detected acc " + std::to_string(a), acc_prob);
+
     // Extract detected boxes - only extract local maxima from 3x3 neighborhood
     for (int i = 0; i < acc_prob.rows; ++i)
     {
         for (int j = 0; j < acc_prob.cols; ++j)
         {
-            float conf = acc_prob.at<float>(i, j);
+            float conf  = acc_prob.at<float>(i, j);
+            float label = acc_gt_prob.at<float>(i, j);
 
             double w = acc_xmax.at<float>(i, j) - acc_xmin.at<float>(i, j);
             double h = acc_ymax.at<float>(i, j) - acc_ymin.at<float>(i, j);
 
-            if (conf < 0.2)
+            if (label > 0.0f)
             {
-                // This is a background detection
-                hist_wh_neg[a].addEntry(w, h);
-                hist_tl_neg[a].addEntry(acc_xmin.at<float>(i, j), acc_ymin.at<float>(i, j));
-                hist_br_neg[a].addEntry(acc_xmax.at<float>(i, j), acc_ymax.at<float>(i, j));
-                hist_cf_neg[a].addEntry(w, h, conf);
-            }
-            else
-            {
-                // This is a positive detection
+                // This is a positive pixel
                 hist_wh_pos[a].addEntry(w, h);
                 hist_tl_pos[a].addEntry(acc_xmin.at<float>(i, j), acc_ymin.at<float>(i, j));
                 hist_br_pos[a].addEntry(acc_xmax.at<float>(i, j), acc_ymax.at<float>(i, j));
                 hist_cf_pos[a].addEntry(w, h, conf);
+            }
+            else
+            {
+                // This is a background pixel
+                hist_wh_neg[a].addEntry(w, h);
+                hist_tl_neg[a].addEntry(acc_xmin.at<float>(i, j), acc_ymin.at<float>(i, j));
+                hist_br_neg[a].addEntry(acc_xmax.at<float>(i, j), acc_ymax.at<float>(i, j));
+                hist_cf_neg[a].addEntry(w, h, conf);
             }
         }
     }
@@ -179,7 +212,7 @@ void histogramOfCoordsOfNegative (caffe::Blob<float> *output, int a)
 
 
 void computeStatistics (const std::string &path_image, const std::shared_ptr<caffe::Net<float>> &net,
-                        const std::string &path_out)
+                        const std::map<std::string, std::vector<BB2D>> &gt_bbs_list)
 {
     caffe::Blob<float>* input_layer  = net->input_blobs()[0];
 
@@ -191,6 +224,18 @@ void computeStatistics (const std::string &path_image, const std::shared_ptr<caf
     cv::Mat imagef; image.convertTo(imagef, CV_32FC3);
     imagef -= cv::Scalar(128.0f, 128.0f, 128.0f);
     imagef *= 1.0f/128.0f;
+
+    // Ground truth bounding boxes
+    std::vector<BB2D> gt_bbs;
+    auto gt_bbsi = gt_bbs_list.find(path_image);
+    if (gt_bbsi == gt_bbs_list.end())
+    {
+        LOG(WARNING) << "No ground truth for image '" << path_image << "'";
+    }
+    else
+    {
+        gt_bbs = (*gt_bbsi).second;
+    }
 
 
     // Reshape the network
@@ -204,15 +249,20 @@ void computeStatistics (const std::string &path_image, const std::shared_ptr<caf
 
     net->Forward();
 
-    for (int i = 0; i < net->output_blobs().size(); ++i)
+    // For each accumulator
+    for (int a = 0; a < net->output_blobs().size(); ++a)
     {
-        histogramOfCoordsOfNegative(net->output_blobs()[i], i);
+        histogramOfCoords(net->output_blobs()[a], a, gt_bbs);
     }
+
+//    cv::imshow("image", image);
+//    cv::waitKey(0);
 }
 
 
 void runStatisticsComputation (const std::string &path_prototxt, const std::string &path_caffemodel,
-                               const std::string &path_image_list, const std::string &path_out)
+                               const std::string &path_image_list, const std::string &path_gt_bbtxt,
+                               const std::string &path_out)
 {
 #ifdef CPU_ONLY
     caffe::Caffe::set_mode(caffe::Caffe::CPU);
@@ -235,16 +285,20 @@ void runStatisticsComputation (const std::string &path_prototxt, const std::stri
     CHECK(infile) << "Unable to open image list TXT file '" << path_image_list << "'!";
     std::string line;
 
+    // Load ground truth
+    std::map<std::string, std::vector<BB2D>> gt_bbs_list = readBBTXTFile(path_gt_bbtxt);
+
+
     for (int i = 0; i < net->output_blobs().size(); ++i)
     {
-        hist_wh_neg.emplace_back(0, 2, 0, 2, 400);
-        hist_tl_neg.emplace_back(-1, 1, -1, 1, 400);
-        hist_br_neg.emplace_back(0, 2, 0, 2, 400);
-        hist_cf_neg.emplace_back(0, 2, 0, 2, 400);
-        hist_wh_pos.emplace_back(0, 2, 0, 2, 400);
-        hist_tl_pos.emplace_back(-1, 1, -1, 1, 400);
-        hist_br_pos.emplace_back(0, 2, 0, 2, 400);
-        hist_cf_pos.emplace_back(0, 2, 0, 2, 400);
+        hist_wh_neg.emplace_back(0, 2, 0, 2, 200);
+        hist_tl_neg.emplace_back(-1, 1, -1, 1, 200);
+        hist_br_neg.emplace_back(0, 2, 0, 2, 200);
+        hist_cf_neg.emplace_back(0, 2, 0, 2, 200);
+        hist_wh_pos.emplace_back(0, 2, 0, 2, 200);
+        hist_tl_pos.emplace_back(-1, 1, -1, 1, 200);
+        hist_br_pos.emplace_back(0, 2, 0, 2, 200);
+        hist_cf_pos.emplace_back(0, 2, 0, 2, 200);
     }
 
 
@@ -255,7 +309,7 @@ void runStatisticsComputation (const std::string &path_prototxt, const std::stri
         CHECK(boost::filesystem::exists(line)) << "Image '" << line << "' not found!";
 
         // Detect bbs on the image
-        computeStatistics(line, net, path_out);
+        computeStatistics(line, net, gt_bbs_list);
     }
 
 
@@ -298,8 +352,8 @@ void runStatisticsComputation (const std::string &path_prototxt, const std::stri
 
         std::vector<cv::Mat> chs_cf;
         chs_cf.push_back(cv::Mat::zeros(hist_wh_pos[i].hist.size(), CV_64FC1));
-        chs_cf.push_back(hist_cf_pos[i].countNormalizedNormalized());
-        chs_cf.push_back(hist_cf_neg[i].countNormalizedNormalized());
+        chs_cf.push_back(hist_cf_pos[i].countNormalized());
+        chs_cf.push_back(hist_cf_neg[i].countNormalized());
         cv::line(chs_cf[0], cv::Point(chs_cf[0].cols/2,0), cv::Point(chs_cf[0].cols/2, chs_cf[0].rows), cv::Scalar(0.5));
         cv::line(chs_cf[0], cv::Point(0,chs_cf[0].rows/2), cv::Point(chs_cf[0].cols, chs_cf[0].rows/2), cv::Scalar(0.5));
         cv::line(chs_cf[0], cv::Point(0,0), cv::Point(chs_cf[0].cols, chs_cf[0].rows), cv::Scalar(0.5));
@@ -320,6 +374,7 @@ struct ProgramArguments
     std::string path_prototxt;
     std::string path_caffemodel;
     std::string path_image_list;
+    std::string path_gt_bbtxt;
     std::string path_out;
 };
 
@@ -339,6 +394,8 @@ void parseArguments (int argc, char** argv, ProgramArguments &pa)
              "Weight file of the network (*.caffemodel)")
             ("image_list", po::value<std::string>(&pa.path_image_list)->required(),
              "Path to a TXT file with paths to the images to be tested")
+            ("gt_bbtxt", po::value<std::string>(&pa.path_gt_bbtxt)->required(),
+             "Path to a BBTXT file with ground truth annotation for the images in image list")
             ("path_out", po::value<std::string>(&pa.path_out)->required(),
              "Path to the output folder")
         ;
@@ -347,6 +404,7 @@ void parseArguments (int argc, char** argv, ProgramArguments &pa)
         positional.add("prototxt", 1);
         positional.add("caffemodel", 1);
         positional.add("image_list", 1);
+        positional.add("gt_bbtxt", 1);
         positional.add("path_out", 1);
 
 
@@ -355,7 +413,7 @@ void parseArguments (int argc, char** argv, ProgramArguments &pa)
         po::store(po::command_line_parser(argc, argv).options(desc).positional(positional).run(), vm);
 
         if (vm.count("help")) {
-            std::cout << "Usage: ./detect_accumulator path/f.prototxt path/f.caffemodel path/image_list.txt path/out.bbtxt\n";
+            std::cout << "Usage: ./macc_statistics path/f.prototxt path/f.caffemodel path/image_list.txt path/out/folder\n";
             std::cout << desc;
             exit(EXIT_SUCCESS);
         }
@@ -375,6 +433,11 @@ void parseArguments (int argc, char** argv, ProgramArguments &pa)
         if (!boost::filesystem::exists(pa.path_image_list))
         {
             std::cerr << "ERROR: File '" << pa.path_image_list << "' does not exist!" << std::endl;
+            exit(EXIT_FAILURE);
+        }
+        if (!boost::filesystem::exists(pa.path_gt_bbtxt))
+        {
+            std::cerr << "ERROR: File '" << pa.path_gt_bbtxt << "' does not exist!" << std::endl;
             exit(EXIT_FAILURE);
         }
         if (not boost::filesystem::exists(pa.path_out))
@@ -401,7 +464,7 @@ int main (int argc, char** argv)
     parseArguments(argc, argv, pa);
 
 
-    runStatisticsComputation(pa.path_prototxt, pa.path_caffemodel, pa.path_image_list, pa.path_out);
+    runStatisticsComputation(pa.path_prototxt, pa.path_caffemodel, pa.path_image_list, pa.path_gt_bbtxt, pa.path_out);
 
 
     return EXIT_SUCCESS;
