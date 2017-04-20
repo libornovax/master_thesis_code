@@ -106,11 +106,13 @@ namespace {
     std::vector<Hist2D> hist_wh_neg;
     std::vector<Hist2D> hist_tl_neg;
     std::vector<Hist2D> hist_br_neg;
-    std::vector<Hist2D> hist_cf_neg;
     std::vector<Hist2D> hist_wh_pos;
     std::vector<Hist2D> hist_tl_pos;
     std::vector<Hist2D> hist_br_pos;
-    std::vector<Hist2D> hist_cf_pos;
+
+    std::vector<Hist2D> hist_wh_car_g_bb;
+    std::vector<Hist2D> hist_wh_notcar_g_bb;
+
 }
 
 
@@ -184,7 +186,6 @@ void histogramOfCoords (caffe::Blob<float> *output, int a, const std::vector<BB2
     {
         for (int j = 0; j < acc_prob.cols; ++j)
         {
-            float conf  = acc_prob.at<float>(i, j);
             float label = acc_gt_prob.at<float>(i, j);
 
             double w = acc_xmax.at<float>(i, j) - acc_xmin.at<float>(i, j);
@@ -196,7 +197,8 @@ void histogramOfCoords (caffe::Blob<float> *output, int a, const std::vector<BB2
                 hist_wh_pos[a].addEntry(w, h);
                 hist_tl_pos[a].addEntry(acc_xmin.at<float>(i, j), acc_ymin.at<float>(i, j));
                 hist_br_pos[a].addEntry(acc_xmax.at<float>(i, j), acc_ymax.at<float>(i, j));
-                hist_cf_pos[a].addEntry(w, h, conf);
+                hist_wh_car_g_bb[a].addEntry(w, h, 1.0);
+                hist_wh_notcar_g_bb[a].addEntry(w, h, 0.0);
             }
             else
             {
@@ -204,7 +206,8 @@ void histogramOfCoords (caffe::Blob<float> *output, int a, const std::vector<BB2
                 hist_wh_neg[a].addEntry(w, h);
                 hist_tl_neg[a].addEntry(acc_xmin.at<float>(i, j), acc_ymin.at<float>(i, j));
                 hist_br_neg[a].addEntry(acc_xmax.at<float>(i, j), acc_ymax.at<float>(i, j));
-                hist_cf_neg[a].addEntry(w, h, conf);
+                hist_wh_car_g_bb[a].addEntry(w, h, 0.0);
+                hist_wh_notcar_g_bb[a].addEntry(w, h, 1.0);
             }
         }
     }
@@ -294,11 +297,11 @@ void runStatisticsComputation (const std::string &path_prototxt, const std::stri
         hist_wh_neg.emplace_back(0, 2, 0, 2, 200);
         hist_tl_neg.emplace_back(-1, 1, -1, 1, 200);
         hist_br_neg.emplace_back(0, 2, 0, 2, 200);
-        hist_cf_neg.emplace_back(0, 2, 0, 2, 200);
         hist_wh_pos.emplace_back(0, 2, 0, 2, 200);
         hist_tl_pos.emplace_back(-1, 1, -1, 1, 200);
         hist_br_pos.emplace_back(0, 2, 0, 2, 200);
-        hist_cf_pos.emplace_back(0, 2, 0, 2, 200);
+        hist_wh_car_g_bb.emplace_back(0, 2, 0, 2, 200);
+        hist_wh_notcar_g_bb.emplace_back(0, 2, 0, 2, 200);
     }
 
 
@@ -315,51 +318,72 @@ void runStatisticsComputation (const std::string &path_prototxt, const std::stri
 
     for (int i = 0; i < net->output_blobs().size(); ++i)
     {
-        std::vector<cv::Mat> chs_tl;
-        chs_tl.push_back(cv::Mat::zeros(hist_tl_pos[i].hist.size(), CV_64FC1));
-        chs_tl.push_back(hist_tl_pos[i].normalized());
-        chs_tl.push_back(hist_tl_neg[i].normalized());
-        cv::line(chs_tl[0], cv::Point(chs_tl[0].cols/2,0), cv::Point(chs_tl[0].cols/2, chs_tl[0].rows), cv::Scalar(0.5), 2);
-        cv::line(chs_tl[0], cv::Point(0,chs_tl[0].rows/2), cv::Point(chs_tl[0].cols, chs_tl[0].rows/2), cv::Scalar(0.5), 2);
-//        cv::line(chs_tl[0], cv::Point(3*chs_tl[0].cols/4,chs_tl[0].rows/2), cv::Point(3*chs_tl[0].cols/4, chs_tl[0].rows), cv::Scalar(0.5));
-//        cv::line(chs_tl[0], cv::Point(chs_tl[0].cols/2,3*chs_tl[0].rows/4), cv::Point(chs_tl[0].cols, 3*chs_tl[0].rows/4), cv::Scalar(0.5));
-        cv::Mat comb_tl; cv::merge(chs_tl, comb_tl);
-        cv::imshow("Normalized tl histogram " + std::to_string(i), comb_tl);
-        cv::imwrite(path_out + "/hist_tl_" + net->blob_names()[net->output_blob_indices()[i]] + ".png", comb_tl*255);
+//        {
+//            std::vector<cv::Mat> chs_tl;
+//            chs_tl.push_back(cv::Mat::zeros(hist_tl_pos[i].hist.size(), CV_64FC1));
+//            chs_tl.push_back(hist_tl_pos[i].normalized());
+//            chs_tl.push_back(hist_tl_neg[i].normalized());
+//            cv::line(chs_tl[0], cv::Point(chs_tl[0].cols/2,0), cv::Point(chs_tl[0].cols/2, chs_tl[0].rows), cv::Scalar(0.5), 2);
+//            cv::line(chs_tl[0], cv::Point(0,chs_tl[0].rows/2), cv::Point(chs_tl[0].cols, chs_tl[0].rows/2), cv::Scalar(0.5), 2);
+//            cv::Mat comb_tl; cv::merge(chs_tl, comb_tl);
+//            cv::imshow("Normalized tl histogram " + std::to_string(i), comb_tl);
+//            cv::imwrite(path_out + "/hist_tl_" + net->blob_names()[net->output_blob_indices()[i]] + ".png", comb_tl*255);
+//        }
 
-        std::vector<cv::Mat> chs_br;
-        chs_br.push_back(cv::Mat::zeros(hist_br_pos[i].hist.size(), CV_64FC1));
-        chs_br.push_back(hist_br_pos[i].normalized());
-        chs_br.push_back(hist_br_neg[i].normalized());
-        cv::line(chs_br[0], cv::Point(chs_br[0].cols/2,0), cv::Point(chs_br[0].cols/2, chs_br[0].rows), cv::Scalar(0.5));
-        cv::line(chs_br[0], cv::Point(0,chs_br[0].rows/2), cv::Point(chs_br[0].cols, chs_br[0].rows/2), cv::Scalar(0.5));
-//        cv::line(chs_br[0], cv::Point(3*chs_br[0].cols/4,chs_br[0].rows/2), cv::Point(3*chs_br[0].cols/4, chs_br[0].rows), cv::Scalar(0.5));
-//        cv::line(chs_br[0], cv::Point(chs_br[0].cols/2,3*chs_br[0].rows/4), cv::Point(chs_br[0].cols, 3*chs_br[0].rows/4), cv::Scalar(0.5));
-        cv::Mat comb_br; cv::merge(chs_br, comb_br);
-        cv::imshow("Normalized br histogram " + std::to_string(i), comb_br);
-        cv::imwrite(path_out + "/hist_br_" + net->blob_names()[net->output_blob_indices()[i]] + ".png", comb_br*255);
+//        {
+//            std::vector<cv::Mat> chs_br;
+//            chs_br.push_back(cv::Mat::zeros(hist_br_pos[i].hist.size(), CV_64FC1));
+//            chs_br.push_back(hist_br_pos[i].normalized());
+//            chs_br.push_back(hist_br_neg[i].normalized());
+//            cv::line(chs_br[0], cv::Point(chs_br[0].cols/2,0), cv::Point(chs_br[0].cols/2, chs_br[0].rows), cv::Scalar(0.5));
+//            cv::line(chs_br[0], cv::Point(0,chs_br[0].rows/2), cv::Point(chs_br[0].cols, chs_br[0].rows/2), cv::Scalar(0.5));
+//            cv::Mat comb_br; cv::merge(chs_br, comb_br);
+//            cv::imshow("Normalized br histogram " + std::to_string(i), comb_br);
+//            cv::imwrite(path_out + "/hist_br_" + net->blob_names()[net->output_blob_indices()[i]] + ".png", comb_br*255);
+//        }
 
-        std::vector<cv::Mat> chs_wh;
-        chs_wh.push_back(cv::Mat::zeros(hist_wh_pos[i].hist.size(), CV_64FC1));
-        chs_wh.push_back(hist_wh_pos[i].normalized());
-        chs_wh.push_back(hist_wh_neg[i].normalized());
-        cv::line(chs_wh[0], cv::Point(chs_wh[0].cols/2,0), cv::Point(chs_wh[0].cols/2, chs_wh[0].rows), cv::Scalar(0.5));
-        cv::line(chs_wh[0], cv::Point(0,chs_wh[0].rows/2), cv::Point(chs_wh[0].cols, chs_wh[0].rows/2), cv::Scalar(0.5));
-        cv::line(chs_wh[0], cv::Point(0,0), cv::Point(chs_wh[0].cols, chs_wh[0].rows), cv::Scalar(0.5));
-        cv::Mat comb_wh; cv::merge(chs_wh, comb_wh);
-        cv::imshow("Normalized wh histogram " + std::to_string(i), comb_wh);
-        cv::imwrite(path_out + "/hist_wh_" + net->blob_names()[net->output_blob_indices()[i]] + ".png", comb_wh*255);
+        {
+            // P(BB|CAR_GT) WxH
+            std::vector<cv::Mat> chs;
+            chs.push_back(cv::Mat::zeros(hist_wh_pos[i].hist.size(), CV_64FC1));
+            chs.push_back(hist_wh_pos[i].normalized());
+            chs.push_back(hist_wh_neg[i].normalized());
+            cv::line(chs[0], cv::Point(chs[0].cols/2,0), cv::Point(chs[0].cols/2, chs[0].rows), cv::Scalar(0.5));
+            cv::line(chs[0], cv::Point(0,chs[0].rows/2), cv::Point(chs[0].cols, chs[0].rows/2), cv::Scalar(0.5));
+            cv::line(chs[0], cv::Point(0,0), cv::Point(chs[0].cols, chs[0].rows), cv::Scalar(0.5));
+            cv::Mat comb_wh; cv::merge(chs, comb_wh);
+            cv::imshow("P(BB|CAR_GT) WxH " + std::to_string(i), comb_wh);
+            cv::imwrite(path_out + "/hist_wh_bb_g_car_notcar" + net->blob_names()[net->output_blob_indices()[i]] + ".png", comb_wh*255);
+        }
 
-        std::vector<cv::Mat> chs_cf;
-        chs_cf.push_back(cv::Mat::zeros(hist_wh_pos[i].hist.size(), CV_64FC1));
-        chs_cf.push_back(hist_cf_pos[i].countNormalized());
-        chs_cf.push_back(hist_cf_neg[i].countNormalized());
-        cv::line(chs_cf[0], cv::Point(chs_cf[0].cols/2,0), cv::Point(chs_cf[0].cols/2, chs_cf[0].rows), cv::Scalar(0.5));
-        cv::line(chs_cf[0], cv::Point(0,chs_cf[0].rows/2), cv::Point(chs_cf[0].cols, chs_cf[0].rows/2), cv::Scalar(0.5));
-        cv::line(chs_cf[0], cv::Point(0,0), cv::Point(chs_cf[0].cols, chs_cf[0].rows), cv::Scalar(0.5));
-        cv::Mat comb_cf; cv::merge(chs_cf, comb_cf);
-        cv::imshow("Confidence for different wh " + std::to_string(i), comb_cf);
-        cv::imwrite(path_out + "/conf_wh_" + net->blob_names()[net->output_blob_indices()[i]] + ".png", comb_cf*255);
+        {
+            // P(CAR_GT|BB) WxH
+            std::vector<cv::Mat> chs;
+            chs.push_back(cv::Mat::zeros(hist_wh_car_g_bb[i].hist.size(), CV_64FC1));
+            chs.push_back(hist_wh_car_g_bb[i].countNormalized());
+            chs.push_back(cv::Mat::zeros(hist_wh_car_g_bb[i].hist.size(), CV_64FC1));
+            cv::line(chs[0], cv::Point(chs[0].cols/2,0), cv::Point(chs[0].cols/2, chs[0].rows), cv::Scalar(0.5));
+            cv::line(chs[0], cv::Point(0,chs[0].rows/2), cv::Point(chs[0].cols, chs[0].rows/2), cv::Scalar(0.5));
+            cv::line(chs[0], cv::Point(0,0), cv::Point(chs[0].cols, chs[0].rows), cv::Scalar(0.5));
+            cv::Mat comb_cf; cv::merge(chs, comb_cf);
+            cv::imshow("P(CAR_GT|BB) WxH " + std::to_string(i), comb_cf);
+            cv::imwrite(path_out + "/hist_wh_car_g_bb_" + net->blob_names()[net->output_blob_indices()[i]] + ".png", comb_cf*255);
+        }
+
+        {
+            // P(NOT_CAR_GT|BB) WxH
+            std::vector<cv::Mat> chs;
+            chs.push_back(cv::Mat::zeros(hist_wh_car_g_bb[i].hist.size(), CV_64FC1));
+            chs.push_back(cv::Mat::zeros(hist_wh_car_g_bb[i].hist.size(), CV_64FC1));
+            chs.push_back(hist_wh_notcar_g_bb[i].countNormalized());
+            cv::line(chs[0], cv::Point(chs[0].cols/2,0), cv::Point(chs[0].cols/2, chs[0].rows), cv::Scalar(0.5));
+            cv::line(chs[0], cv::Point(0,chs[0].rows/2), cv::Point(chs[0].cols, chs[0].rows/2), cv::Scalar(0.5));
+            cv::line(chs[0], cv::Point(0,0), cv::Point(chs[0].cols, chs[0].rows), cv::Scalar(0.5));
+            cv::Mat comb_cf; cv::merge(chs, comb_cf);
+            cv::imshow("P(NOT_CAR_GT|BB) WxH " + std::to_string(i), comb_cf);
+            cv::imwrite(path_out + "/hist_wh_notcar_g_bb_" + net->blob_names()[net->output_blob_indices()[i]] + ".png", comb_cf*255);
+        }
+
     }
 
     cv::waitKey();
