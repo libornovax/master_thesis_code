@@ -366,7 +366,7 @@ void runStatisticsComputation (const std::string &path_prototxt, const std::stri
             cv::line(chs[0], cv::Point(0,chs[0].rows/2), cv::Point(chs[0].cols, chs[0].rows/2), cv::Scalar(0.5));
             cv::line(chs[0], cv::Point(0,0), cv::Point(chs[0].cols, chs[0].rows), cv::Scalar(0.5));
             cv::Mat comb_cf; cv::merge(chs, comb_cf);
-            cv::imshow("P(CAR_GT|BB) WxH " + std::to_string(i), comb_cf);
+//            cv::imshow("P(CAR_GT|BB) WxH " + std::to_string(i), comb_cf);
             cv::imwrite(path_out + "/hist_wh_car_g_bb_" + net->blob_names()[net->output_blob_indices()[i]] + ".png", comb_cf*255);
         }
 
@@ -380,13 +380,13 @@ void runStatisticsComputation (const std::string &path_prototxt, const std::stri
             cv::line(chs[0], cv::Point(0,chs[0].rows/2), cv::Point(chs[0].cols, chs[0].rows/2), cv::Scalar(0.5));
             cv::line(chs[0], cv::Point(0,0), cv::Point(chs[0].cols, chs[0].rows), cv::Scalar(0.5));
             cv::Mat comb_cf; cv::merge(chs, comb_cf);
-            cv::imshow("P(NOT_CAR_GT|BB) WxH " + std::to_string(i), comb_cf);
+//            cv::imshow("P(NOT_CAR_GT|BB) WxH " + std::to_string(i), comb_cf);
             cv::imwrite(path_out + "/hist_wh_notcar_g_bb_" + net->blob_names()[net->output_blob_indices()[i]] + ".png", comb_cf*255);
         }
 
     }
 
-    cv::waitKey();
+//    cv::waitKey();
 }
 
 
