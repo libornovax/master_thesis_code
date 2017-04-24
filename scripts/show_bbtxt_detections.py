@@ -160,6 +160,9 @@ class DetectionBrowser(object):
 		self.ax.cla()
 		self.ax.imshow(img)
 
+		self.ax.set_xlim([0, img.shape[1]])
+		self.ax.set_ylim([img.shape[0], 0])
+
 		if self.iml_gt is not None:
 			self._render_bounding_boxes(self.iml_gt, self.gt_mapping, gt=True)
 		self._render_bounding_boxes(self.iml_detections, self.detections_mapping)
@@ -167,6 +170,7 @@ class DetectionBrowser(object):
 		plt.title('[' + str(self.cursor) + '/' + str(len(self.file_list)) + '] ' + self.file_list[self.cursor] + ' (((' + str(self.confidence) + ')))')
 		plt.axis('off')
 		self.fig.canvas.draw()
+		plt.subplots_adjust(left=0.0, right=1.0, top=1.0, bottom=0.0)
 
 
 	def _render_bounding_boxes(self, iml, mapping, gt=False):
