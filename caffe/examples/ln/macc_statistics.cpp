@@ -139,33 +139,33 @@ void wrapInputLayer (caffe::Blob<float>* input_layer, std::vector<cv::Mat> &out_
 }
 
 
-void histogramOfCoords (caffe::Blob<float> *output, int a, const std::vector<BB2D> &gt_bbs)
+void histogramOfCoords (caffe::Blob<float> *output, int a, const std::string &name, const std::vector<BB2D> &gt_bbs)
 {
     // Build probabilistic target (ground truth) accumulator - we need it to determine positive and negative
     // pixels
-    static std::vector<std::pair<double, double>> size_bounds;
-    static std::vector<double> scales;
+    static std::map<std::string, std::pair<double, double>> size_bounds;
+    static std::map<std::string, double> scales;
     if (size_bounds.size() == 0)
     {
         // WARNING! These are size bounds for "macc_0.3_r2_x2_to_x16"!!
-        size_bounds.emplace_back(22.25, 55.5);
-        size_bounds.emplace_back(44.5, 111.0);
-        size_bounds.emplace_back(89.0, 222.0);
-        size_bounds.emplace_back(178.0, 444.0);
-        scales.push_back(2.0);
-        scales.push_back(4.0);
-        scales.push_back(8.0);
-        scales.push_back(16.0);
+        size_bounds.insert(std::make_pair("acc_x2", std::make_pair(22.25, 55.5)));
+        size_bounds.insert(std::make_pair("acc_x4", std::make_pair(44.5, 111.0)));
+        size_bounds.insert(std::make_pair("acc_x8", std::make_pair(89.0, 222.0)));
+        size_bounds.insert(std::make_pair("acc_x16", std::make_pair(178.0, 444.0)));
+        scales.insert(std::make_pair("acc_x2", 2.0));
+        scales.insert(std::make_pair("acc_x4", 4.0));
+        scales.insert(std::make_pair("acc_x8", 8.0));
+        scales.insert(std::make_pair("acc_x16", 16.0));
     }
     cv::Mat acc_gt_prob(output->shape(2), output->shape(3), CV_32FC1, cv::Scalar(0.0f));
     for (const BB2D &gt_bb: gt_bbs)
     {
         double size = std::max(gt_bb.width(), gt_bb.height());
-        if (size > size_bounds[a].first && size < size_bounds[a].second)
+        if (size > size_bounds[name].first && size < size_bounds[name].second)
         {
             // This ground truth should be detected by this accumulator
             cv::Point2d co = gt_bb.center();
-            cv::circle(acc_gt_prob, cv::Point(co.x/scales[a], co.y/scales[a]), 3, cv::Scalar(1.0f), -1);
+            cv::circle(acc_gt_prob, cv::Point(co.x/scales[name], co.y/scales[name]), 3, cv::Scalar(1.0f), -1);
         }
     }
 
@@ -257,7 +257,7 @@ void computeStatistics (const std::string &path_image, const std::shared_ptr<caf
     // For each accumulator
     for (int a = 0; a < net->output_blobs().size(); ++a)
     {
-        histogramOfCoords(net->output_blobs()[a], a, gt_bbs);
+        histogramOfCoords(net->output_blobs()[a], a, net->blob_names()[net->output_blob_indices()[a]], gt_bbs);
     }
 
 //    cv::imshow("image", image);
