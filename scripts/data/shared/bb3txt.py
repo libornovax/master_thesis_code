@@ -96,3 +96,29 @@ def load_bb3txt_to_list(path_bb3txt):
 
 	print('ERROR: File "%s" could not be opened!'%(path_bb3txt))
 	exit(1)
+
+
+def write_bb3txt(bb3d_dict, path_bb3txt):
+	"""
+	Writes a dictionary of BB3D objects indexed by filenames to a BB3TXT file.
+
+	Input:
+		bb3d_dict:  Dictionary of lists of BB3D objects indexed by filenames
+		path_bb3txt: Path to a BB3TXT file
+	Returns:
+		
+	"""
+	with open(path_bb3txt, 'w') as outfile:
+		# Ok, the file is open so lets start writing
+
+		for filename in bb3d_dict:
+			for i in range(len(bb3d_dict[filename])):
+				bb3d = bb3d_dict[filename][i]
+
+				# filename label confidence xmin ymin xmax ymax fblx fbly fbrx fbry rblx rbly ftly
+				outfile.write(str(filename) + ' ')
+				outfile.write('%d %f %f %f %f %f %f %f %f %f %f %f %f\n'%(
+					bb3d.label, bb3d.confidence, bb3d.bb2d.xmin, bb3d.bb2d.ymin, bb3d.bb2d.xmax, 
+					bb3d.bb2d.ymax, bb3d.fblx, bb3d.fbly, bb3d.fbrx, bb3d.fbry, bb3d.rblx, 
+					bb3d.rbly, bb3d.ftly))
+

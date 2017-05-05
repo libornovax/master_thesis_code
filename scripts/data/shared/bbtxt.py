@@ -81,3 +81,27 @@ def load_bbtxt_to_list(path_bbtxt):
 
 	print('ERROR: File "%s" could not be opened!'%(path_bbtxt))
 	exit(1)
+
+
+def write_bbtxt(bb2d_dict, path_bbtxt):
+	"""
+	Writes a dictionary of BB2D objects indexed by filenames to a BBTXT file.
+
+	Input:
+		bb2d_dict:  Dictionary of lists of BB2d objects indexed by filenames
+		path_bbtxt: Path to a BBTXT file
+	Returns:
+		
+	"""
+	with open(path_bbtxt, 'w') as outfile:
+		# Ok, the file is open so lets start writing
+
+		for filename in bb2d_dict:
+			for i in range(len(bb2d_dict[filename])):
+				bb2d = bb2d_dict[filename][i]
+
+				# filename label confidence xmin ymin xmax ymax
+				outfile.write(str(filename) + ' ')
+				outfile.write('%d %f %f %f %f %f\n'%(bb2d.label, bb2d.confidence, bb2d.xmin, 
+													 bb2d.ymin, bb2d.xmax, bb2d.ymax))
+
