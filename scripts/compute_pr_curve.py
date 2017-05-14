@@ -215,7 +215,8 @@ class PRPlotter(object):
 		plt.grid()
 		plt.xlabel('precision')
 		plt.ylabel('recall')
-		plt.title(self.title + ' (iou=%.2f)'%(self.iou))
+		plt.title(self.title)
+		# plt.title(self.title + ' (iou=%.2f)'%(self.iou))
 
 
 	def _add_curve(self, tps, fps, fns, fnsr, fpsd, category):
