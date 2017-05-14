@@ -163,6 +163,9 @@ class PRPlotter(object):
 		print('-- Loading detections: ' + path_detections)
 		self.iml_detections = load_bbtxt(path_detections)
 
+		# Find min and max confidence
+		self._min_max_confidence()
+
 		# IMPORTANT! Get complete list of images! We cannot just take the ground truth files because
 		# the BBTXT does not contain empty images, neither we can take just the detections because
 		# that BBTXT does not contain files without detections (which could possibly contain ground
@@ -192,6 +195,19 @@ class PRPlotter(object):
 		self.recallsd     = []
 		self.precisionsrd = []
 		self.recallsrd    = []
+
+
+	def _min_max_confidence(self):
+		"""
+		Determine min and max confidence for creating the linspace of steps.
+		"""
+		self.conf_min = 9999999
+		self.conf_max = -9999999
+
+		for filename in self.iml_detections:
+			for det in self.iml_detections[filename]:
+				if det.confidence > self.conf_max: self.conf_max = det.confidence
+				if det.confidence < self.conf_min: self.conf_min = det.confidence
 
 		
 	def _check_file_list(self):
@@ -273,7 +289,8 @@ class PRPlotter(object):
 		fnsr = np.zeros(NUM_STEPS, dtype=np.int)  # Only required bounding boxes
 		fpsd = np.zeros(NUM_STEPS, dtype=np.int)  # False positives without those in 'dontcare' regions
 
-		for s, conf_thr in enumerate(np.linspace(0, 1, NUM_STEPS)):
+		steps = np.linspace(self.conf_min, self.conf_max, NUM_STEPS+2)
+		for s, conf_thr in enumerate(steps[:-2]):
 			# Process each image from the file list
 			for filename in self.file_list:
 				if filename in self.iml_gt:

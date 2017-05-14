@@ -26,6 +26,16 @@ from matplotlib import pyplot as plt
 
 
 ####################################################################################################
+#                                           DEFINITIONS                                            # 
+####################################################################################################
+
+# Colors of the plots
+COLORS = [
+	'#3399FF', '#FF3300', '#FF33CC', '#40BF0D', '#FFE300', '#000000'
+]
+
+
+####################################################################################################
 #                                            FUNCTIONS                                             # 
 ####################################################################################################
 
@@ -40,8 +50,14 @@ def load_csv(path_csv):
 	Output:
 		precisions, recalls (lists of points on the PR curve)
 	"""
-	precisions = []
-	recalls    = []
+	precisions   = []
+	recalls      = []
+	precisionsr  = []
+	recallsr     = []
+	precisionsd  = []
+	recallsd     = []
+	precisionsrd = []
+	recallsrd    = []
 
 	with open(path_csv, 'r') as infile:
 		csv_reader = csv.DictReader(infile, delimiter=' ')
@@ -55,8 +71,14 @@ def load_csv(path_csv):
 			if float(row['precision']) != 0 and float(row['recall']) != 0:
 				precisions.append(float(row['precision']))
 				recalls.append(float(row['recall']))
+				precisionsr.append(float(row['precisionr']))
+				recallsr.append(float(row['recallr']))
+				precisionsd.append(float(row['precisiond']))
+				recallsd.append(float(row['recalld']))
+				precisionsrd.append(float(row['precisionrd']))
+				recallsrd.append(float(row['recallrd']))
 
-	return precisions, recalls
+	return precisions, recalls, precisionsr, recallsr, precisionsd, recallsd, precisionsrd, recallsrd
 
 
 def initialize_plot(title):
@@ -82,7 +104,7 @@ def save_plot(path_out):
 	Input:
 		path_out: Path to the output file(s) (without extension)
 	"""
-	plt.legend()
+	plt.legend(loc='lower left', prop={'size':13})
 
 	plt.savefig(path_out + '.pdf')
 	plt.savefig(path_out + '.png')
@@ -103,9 +125,17 @@ def plot_pr_curves(paths_csv, labels, path_out, title):
 	initialize_plot(title)
 
 	for i, path in enumerate(paths_csv):
-		precisions, recalls = load_csv(path)
+		precisions, recalls, precisionsr, recallsr, precisionsd, recallsd, precisionsrd, \
+			recallsrd = load_csv(path)
 
-		plt.plot(precisions, recalls, label=labels[i])
+		# plt.plot(precisions, recalls, label=labels[i], color=COLORS[i])
+
+		plt.plot(precisions, recalls, label=labels[i]+'', color=COLORS[i], linewidth=2)
+		plt.plot(precisionsd, recallsd, label=labels[i]+' - don\'t care', color=COLORS[i])
+		plt.plot(precisionsr, recallsr, label=labels[i]+' - required', color=COLORS[i], 
+				 linestyle='--')
+		plt.plot(precisionsrd, recallsrd, label=labels[i]+' - required, don\'t care', 
+				 color=COLORS[i], linestyle=':')
 
 	save_plot(path_out)
 
