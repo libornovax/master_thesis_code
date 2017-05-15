@@ -112,7 +112,7 @@ def save_plot(path_out):
 	print('-- Plot saved to: ' + path_out)
 
 
-def plot_pr_curves(paths_csv, labels, path_out, title):
+def plot_pr_curves(paths_csv, labels, path_out, title, all):
 	"""
 	Creates the plot with the given PR curves and saves it in path_out.
 
@@ -121,6 +121,7 @@ def plot_pr_curves(paths_csv, labels, path_out, title):
 		labels:    Labels of the PR curves (list)
 		path_out:  Path to the output file without extension
 		title:     Title of the plot
+		all:       True if all PR curves should be plotted
 	"""
 	initialize_plot(title)
 
@@ -128,14 +129,15 @@ def plot_pr_curves(paths_csv, labels, path_out, title):
 		precisions, recalls, precisionsr, recallsr, precisionsd, recallsd, precisionsrd, \
 			recallsrd = load_csv(path)
 
-		# plt.plot(precisions, recalls, label=labels[i], color=COLORS[i])
-
-		plt.plot(precisions, recalls, label=labels[i]+'', color=COLORS[i], linewidth=2)
-		plt.plot(precisionsd, recallsd, label=labels[i]+' - don\'t care', color=COLORS[i])
-		plt.plot(precisionsr, recallsr, label=labels[i]+' - required', color=COLORS[i], 
-				 linestyle='--')
-		plt.plot(precisionsrd, recallsrd, label=labels[i]+' - required, don\'t care', 
-				 color=COLORS[i], linestyle=':')
+		if not all:
+			plt.plot(precisions, recalls, label=labels[i], color=COLORS[i], linewidth=2)
+		else:
+			plt.plot(precisions, recalls, label=labels[i]+'', color=COLORS[i], linewidth=2)
+			plt.plot(precisionsd, recallsd, label=labels[i]+' - don\'t care', color=COLORS[i])
+			plt.plot(precisionsr, recallsr, label=labels[i]+' - required', color=COLORS[i], 
+					 linestyle='--')
+			plt.plot(precisionsrd, recallsrd, label=labels[i]+' - required, don\'t care', 
+					 color=COLORS[i], linestyle=':')
 
 	save_plot(path_out)
 
@@ -177,6 +179,8 @@ def parse_arguments():
 						'added automatically because more files will be generated')
 	parser.add_argument('--title', type=str, default='',
 						help='Title of the plot')
+	parser.add_argument('--all', action='store_true',
+						help='Plot all PR curves (not just the main one)')
 
 	args = parser.parse_args()
 
@@ -195,7 +199,7 @@ def parse_arguments():
 def main():
 	args = parse_arguments()
 
-	plot_pr_curves(args.paths_csv, args.labels, args.path_out, args.title)
+	plot_pr_curves(args.paths_csv, args.labels, args.path_out, args.title, args.all)
 
 
 if __name__ == '__main__':
