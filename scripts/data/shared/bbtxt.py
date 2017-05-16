@@ -100,8 +100,10 @@ def write_bbtxt(bb2d_dict, path_bbtxt):
 			for i in range(len(bb2d_dict[filename])):
 				bb2d = bb2d_dict[filename][i]
 
+				lbl = bb2d.label if bb2d.required else -bb2d.label
+
 				# filename label confidence xmin ymin xmax ymax
 				outfile.write(str(filename) + ' ')
-				outfile.write('%d %f %f %f %f %f\n'%(bb2d.label, bb2d.confidence, bb2d.xmin, 
+				outfile.write('%d %f %f %f %f %f\n'%(lbl, bb2d.confidence, bb2d.xmin, 
 													 bb2d.ymin, bb2d.xmax, bb2d.ymax))
 
