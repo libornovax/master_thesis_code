@@ -196,9 +196,39 @@ class PGP(object):
 
 		FTL_3x1 = geometry.reconstruct_X_in_plane(bb3d.fblx, bb3d.ftly, self.KR_3x3_inv, 
 												  self.C_3x1, fp_1x4)
-		FTR_3x1 = FBR_3x1 + (FTL_3x1-FBL_3x1)
-		RTL_3x1 = RBL_3x1 + (FTL_3x1-FBL_3x1)
-		RTR_3x1 = RBR_3x1 + (FTL_3x1-FBL_3x1)
+		# Bottom to top side vector
+		BT_3x1 = FTL_3x1 - FBL_3x1
+
+
+		# # Fix the coordinates to a rectangular cuboid
+		# CM_3x1 = (FBL_3x1 + RBR_3x1) / 2.0
+
+		# # Diagonals
+		# d1_3x1 = FBL_3x1 - CM_3x1
+		# d2_3x1 = FBR_3x1 - CM_3x1
+
+		# d1_l = np.linalg.norm(d1_3x1)
+		# d2_l = np.linalg.norm(d2_3x1)
+
+		# delta = abs(d1_l - d2_l) / 2.0
+
+		# if d1_l > d2_l:
+		# 	d1_new_3x1 = d1_3x1 * (1 - delta / d1_l)
+		# 	d2_new_3x1 = d2_3x1 * (1 + delta / d2_l)
+		# else:
+		# 	d1_new_3x1 = d1_3x1 * (1 + delta / d1_l)
+		# 	d2_new_3x1 = d2_3x1 * (1 - delta / d2_l)
+
+		# FBL_3x1 = CM_3x1 + d1_new_3x1
+		# FBR_3x1 = CM_3x1 + d2_new_3x1
+		# RBL_3x1 = CM_3x1 - d2_new_3x1
+		# RBR_3x1 = CM_3x1 - d1_new_3x1
+
+
+		FTL_3x1 = FBL_3x1 + BT_3x1
+		FTR_3x1 = FBR_3x1 + BT_3x1
+		RTL_3x1 = RBL_3x1 + BT_3x1
+		RTR_3x1 = RBR_3x1 + BT_3x1
 
 		# Combine everything to the output matrix
 		X_3x8 = np.asmatrix(np.zeros((3, 8)))
