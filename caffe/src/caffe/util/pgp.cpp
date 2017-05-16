@@ -66,7 +66,7 @@ cv::Mat PGP::projectXtox (const cv::Mat &X_3xn) const
 }
 
 
-cv::Mat PGP::reconstructBB3D (const BB3D &bb3d) const
+cv::Mat PGP::reconstructAndFixBB3D (BB3D &bb3d) const
 {
     // Reconstruct the corners, which lie in the ground plane
     cv::Mat FBL_3x1 = this->reconstructXGround(bb3d.fblx, bb3d.fbly);
@@ -78,9 +78,8 @@ cv::Mat PGP::reconstructBB3D (const BB3D &bb3d) const
     // We do this by intersecting the ray to FTL with the front side plane of the bounding box - i.e. extract
     // the front side plane equation and then use it to reconstruct the FTL
     cv::Mat n_F_3x1 = FBL_3x1 - RBL_3x1;  // Normal vector of the front side
-    double d_F = - (n_F_3x1.at<double>(0,0)*FBL_3x1.at<double>(0,0)
-                    + n_F_3x1.at<double>(1,0)*FBL_3x1.at<double>(1,0)
-                    + n_F_3x1.at<double>(2,0)*FBL_3x1.at<double>(2,0));
+    double d_F = - n_F_3x1.dot(FBL_3x1);
+
     // Front plane
     cv::Mat fp_1x4(1, 4, CV_64FC1);
     fp_1x4.at<double>(0,0) = n_F_3x1.at<double>(0,0);
@@ -89,9 +88,48 @@ cv::Mat PGP::reconstructBB3D (const BB3D &bb3d) const
     fp_1x4.at<double>(0,3) = d_F;
 
     cv::Mat FTL_3x1 = geometry::reconstructXInPlane(bb3d.fblx, bb3d.ftly, this->KR_3x3_inv, this->C_3x1, fp_1x4);
-    cv::Mat FTR_3x1 = FBR_3x1 + (FTL_3x1-FBL_3x1);
-    cv::Mat RTL_3x1 = RBL_3x1 + (FTL_3x1-FBL_3x1);
-    cv::Mat RTR_3x1 = RBR_3x1 + (FTL_3x1-FBL_3x1);
+    // Extract the vector pointing from the bottom to the top plane
+    cv::Mat BT_3x1 = FTL_3x1 - FBL_3x1;
+
+    {
+        // The reconstruction we obtained so far is a parallelogram (not a rectangle) in the ground plane.
+        // Now we are going to fix it by moving the corners along the diagonals - we need to make
+        // the diagonals equal
+
+        // Center of mass or the parallelogram
+        cv::Mat CM_3x1 = (FBL_3x1 + RBR_3x1) / 2.0;
+        // Half diagonals
+        cv::Mat d1_3x1 = FBL_3x1 - CM_3x1; double d1_l = cv::norm(d1_3x1);
+        cv::Mat d2_3x1 = FBR_3x1 - CM_3x1; double d2_l = cv::norm(d2_3x1);
+
+        double delta = std::abs(d1_l - d2_l) / 2.0;
+
+        cv::Mat d1_new_3x1; cv::Mat d2_new_3x1;
+        if (d1_l > d2_l)
+        {
+            // First diagonal has to be shortened, second prolonged
+            d1_new_3x1 = d1_3x1 * (1 - delta / d1_l);
+            d2_new_3x1 = d2_3x1 * (1 + delta / d2_l);
+        }
+        else
+        {
+            // Second diagonal has to be shortened, first prolonged
+            d1_new_3x1 = d1_3x1 * (1 + delta / d1_l);
+            d2_new_3x1 = d2_3x1 * (1 - delta / d2_l);
+        }
+
+        // Update the corners of the ground plane rectangle
+        FBL_3x1 = CM_3x1 + d1_new_3x1;
+        FBR_3x1 = CM_3x1 + d2_new_3x1;
+        RBL_3x1 = CM_3x1 - d2_new_3x1;
+        RBR_3x1 = CM_3x1 - d1_new_3x1;
+    }
+
+    // Top rectangle
+    FTL_3x1         = FBL_3x1 + BT_3x1;
+    cv::Mat FTR_3x1 = FBR_3x1 + BT_3x1;
+    cv::Mat RTL_3x1 = RBL_3x1 + BT_3x1;
+    cv::Mat RTR_3x1 = RBR_3x1 + BT_3x1;
 
     // Combine everything to the output
     cv::Mat X_3x8(3, 8, CV_64FC1);
@@ -103,6 +141,16 @@ cv::Mat PGP::reconstructBB3D (const BB3D &bb3d) const
     FTR_3x1.copyTo(X_3x8(cv::Rect(5, 0, 1, 3)));
     RTR_3x1.copyTo(X_3x8(cv::Rect(6, 0, 1, 3)));
     RTL_3x1.copyTo(X_3x8(cv::Rect(7, 0, 1, 3)));
+
+    // Update the coordinates in bb3d
+    cv::Mat x_2x8 = this->projectXtox(X_3x8);
+    bb3d.fblx = x_2x8.at<double>(0,0);
+    bb3d.fbly = x_2x8.at<double>(1,0);
+    bb3d.fbrx = x_2x8.at<double>(0,1);
+    bb3d.fbry = x_2x8.at<double>(1,1);
+    bb3d.rblx = x_2x8.at<double>(0,3);
+    bb3d.rbly = x_2x8.at<double>(1,3);
+    bb3d.ftly = x_2x8.at<double>(1,4);
 
     return X_3x8;
 }

@@ -259,7 +259,7 @@ void runPyramidDetection (const std::string &path_prototxt, const std::string &p
                                         BB3D bb3d("", 1, conf, fblx, fbly, fbrx, fbry, rblx, rbly, ftly);
 
                                         // Reconstruct the 3D coordinates
-                                        cv::Mat X_3x8 = pgp.reconstructBB3D(bb3d);
+                                        cv::Mat X_3x8 = pgp.reconstructAndFixBB3D(bb3d);
 
                                         cv::line(ground_canvas, cv::Point(GCS*X_3x8.at<double>(0,0)+GCW/2, GCH-GCS*X_3x8.at<double>(2,0)), cv::Point(GCS*X_3x8.at<double>(0,1)+GCW/2, GCH-GCS*X_3x8.at<double>(2,1)), cv::Scalar(0,255,0), 2);
                                         cv::line(ground_canvas, cv::Point(GCS*X_3x8.at<double>(0,0)+GCW/2, GCH-GCS*X_3x8.at<double>(2,0)), cv::Point(GCS*X_3x8.at<double>(0,3)+GCW/2, GCH-GCS*X_3x8.at<double>(2,3)), cv::Scalar(255,0,0), 2);

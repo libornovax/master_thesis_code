@@ -236,6 +236,8 @@ class DetectionBrowser(object):
 							# Plot front side
 							self.ax1.plot([x_2x8[0,4], x_2x8[0,5]], [x_2x8[1,4], x_2x8[1,5]], color='g', linewidth=2)
 							self.ax1.plot([x_2x8[0,5], x_2x8[0,1]], [x_2x8[1,5], x_2x8[1,1]], color='g', linewidth=2)
+							self.ax1.plot([x_2x8[0,0], x_2x8[0,1]], [x_2x8[1,0], x_2x8[1,1]], color='g', linewidth=2)
+							self.ax1.plot([x_2x8[0,0], x_2x8[0,4]], [x_2x8[1,0], x_2x8[1,4]], color='g', linewidth=2)
 							# Plot rear side
 							self.ax1.plot([x_2x8[0,2], x_2x8[0,3]], [x_2x8[1,2], x_2x8[1,3]], color='r', linewidth=2)
 							self.ax1.plot([x_2x8[0,7], x_2x8[0,3]], [x_2x8[1,7], x_2x8[1,3]], color='r', linewidth=2)
@@ -245,15 +247,16 @@ class DetectionBrowser(object):
 							self.ax1.plot([x_2x8[0,4], x_2x8[0,7]], [x_2x8[1,4], x_2x8[1,7]], color=color, linewidth=2)
 							self.ax1.plot([x_2x8[0,5], x_2x8[0,6]], [x_2x8[1,5], x_2x8[1,6]], color=color, linewidth=2)
 							self.ax1.plot([x_2x8[0,1], x_2x8[0,2]], [x_2x8[1,1], x_2x8[1,2]], color=color, linewidth=2)
+							self.ax1.plot([x_2x8[0,0], x_2x8[0,3]], [x_2x8[1,0], x_2x8[1,3]], color=color, linewidth=2)
 
 						else:
 							print('WARNING: PGP entry not found for image: "' + filename + '"')
 						
-					
-					# Plot the available corners
-					self.ax1.plot([bb.fblx, bb.fbrx], [bb.fbly, bb.fbry], color='g', linewidth=2)
-					self.ax1.plot([bb.fblx, bb.fblx], [bb.fbly, bb.ftly], color='g', linewidth=2)
-					self.ax1.plot([bb.fblx, bb.rblx], [bb.fbly, bb.rbly], color=color, linewidth=2)
+					else:
+						# Plot the available corners
+						self.ax1.plot([bb.fblx, bb.fbrx], [bb.fbly, bb.fbry], color='g', linewidth=2)
+						self.ax1.plot([bb.fblx, bb.fblx], [bb.fbly, bb.ftly], color='g', linewidth=2)
+						self.ax1.plot([bb.fblx, bb.rblx], [bb.fbly, bb.rbly], color=color, linewidth=2)
 
 					txt = mapping[bb.label] if gt else mapping[bb.label] + ' %.3f'%(bb.confidence)
 					self.ax1.text(bb.fblx, bb.ftly-5, txt, fontsize=15, color=color)

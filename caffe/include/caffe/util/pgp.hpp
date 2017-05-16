@@ -54,7 +54,7 @@ public:
      * @param bb3d Detected 3D bounding box (7 parameters)
      * @return 3x8 matrix of point coordinates in this order: FBL FBR RBR RBL FTL FTR RTR RTL
      */
-    cv::Mat reconstructBB3D (const BB3D &bb3d) const;
+    cv::Mat reconstructAndFixBB3D (BB3D &bb3d) const;
 
 
     // -----------------------------------------  PUBLIC MEMBERS  ----------------------------------------- //

@@ -171,7 +171,7 @@ std::vector<BB3D> extract3DBoundingBoxes (caffe::Blob<float> *output, const std:
                 {
                     // There are image projection matrices and ground planes - reconstruct the 3D bounding box
                     BB3D bb3d(path_image, 1, conf, fblx, fbly, fbrx, fbry, rblx, rbly, ftly);
-                    cv::Mat X_3x8 = pgp_p->reconstructBB3D(bb3d);
+                    cv::Mat X_3x8 = pgp_p->reconstructAndFixBB3D(bb3d);
 
                     // Now since the Z axis points forward, we can check if the reconstructed points are in
                     // front of the camera, if not then we can throw away this bounding box
