@@ -210,10 +210,10 @@ class DetectionBrowser(object):
 					id = CATEGORIES.index(mapping[bb.label])
 					color = '#ffd633' if gt else COLORS[id]  # Ground truth has always the same color
 
-					rect = patches.Rectangle((bb.bb2d.xmin, bb.bb2d.ymin), bb.bb2d.width(), 
-											  bb.bb2d.height(), linewidth=1, edgecolor=color,
-											  facecolor='none')
-					self.ax1.add_patch(rect)
+					# rect = patches.Rectangle((bb.bb2d.xmin, bb.bb2d.ymin), bb.bb2d.width(), 
+					# 						  bb.bb2d.height(), linewidth=1, edgecolor=color,
+					# 						  facecolor='none')
+					# self.ax1.add_patch(rect)
 
 					if self.pgps is not None:
 						# We have image projection matrices and ground plane - reconstruct the whole

@@ -47,7 +47,6 @@ import numpy as np
 from mappings.utils import LabelMappingManager
 from shared.bb3txt import load_bb3txt
 from shared.pgp import load_pgp
-from shared.geometry import R3x3_y, t3x1, Rt4x4
 
 
 ####################################################################################################
@@ -75,64 +74,6 @@ MAPPING = LMM.get_mapping('kitti')
 ####################################################################################################
 #                                            FUNCTIONS                                             # 
 ####################################################################################################
-
-def extract_3D_bb(data, P):
-	"""
-	Extract 3D bounding box coordinates in the image from the KITTI labels.
-
-	Input:
-		data: One split line of the label file (line.split(' '))
-		P:    3x4 camera projection matrix
-	Returns:
-		matrix of corners: fbr, rbr, fbl, rbl, ftr, rtr, ftl, rtl
-	"""
-	# Object dimensions
-	h  = float(data[8])
-	w  = float(data[9])
-	l  = float(data[10])
-	# Position of the center point on the ground plane (xz plane)
-	cx = float(data[11])
-	cy = float(data[12])
-	cz = float(data[13])
-	# Rotation of the object around y
-	ry = float(data[14])
-
-	# 3D box corners - careful, the coordinate system of the car is that x points
-	# forward, not z! (It is rotated by 90deg with respect to the camera one)
-	#                 fbr, rbr,   fbl, rbl,  ftr,  rtr,  ftl, rtl
-	X = np.asmatrix([[l/2, -l/2,  l/2, -l/2, l/2,  -l/2, l/2, -l/2],
-		             [0,    0,    0,   0,    -h,   -h,   -h,  -h],
-		             [-w/2, -w/2, w/2, w/2,  -w/2, -w/2, w/2, w/2],
-		             [1,    1,    1,   1,    1,    1,    1,   1]])
-	# Rotate the 3D box around y axis and translate it to the correct position in the camera frame
-	X = Rt4x4(R3x3_y(ry), t3x1(cx, cy, cz)) * X
-	x = P * X
-	# x is in homogeneous coordinates -> get u, v
-	x = x / x[2,:]
-	x = x[0:2,:]
-
-	# image = cv2.imread(path_image)
-	# # Front
-	# cv2.line(image, (int(x[0,0]), int(x[1,0])), (int(x[0,2]), int(x[1,2])), (0,255,0), 3)
-	# cv2.line(image, (int(x[0,4]), int(x[1,4])), (int(x[0,6]), int(x[1,6])), (0,255,0))
-	# cv2.line(image, (int(x[0,0]), int(x[1,0])), (int(x[0,4]), int(x[1,4])), (0,255,0))
-	# cv2.line(image, (int(x[0,2]), int(x[1,2])), (int(x[0,6]), int(x[1,6])), (0,255,0), 3)
-	# # Rear
-	# cv2.line(image, (int(x[0,1]), int(x[1,1])), (int(x[0,3]), int(x[1,3])), (0,0,255))
-	# cv2.line(image, (int(x[0,5]), int(x[1,5])), (int(x[0,7]), int(x[1,7])), (0,0,255))
-	# cv2.line(image, (int(x[0,1]), int(x[1,1])), (int(x[0,5]), int(x[1,5])), (0,0,255))
-	# cv2.line(image, (int(x[0,3]), int(x[1,3])), (int(x[0,7]), int(x[1,7])), (0,0,255))
-	# # Connections
-	# cv2.line(image, (int(x[0,0]), int(x[1,0])), (int(x[0,1]), int(x[1,1])), (255,0,0))
-	# cv2.line(image, (int(x[0,2]), int(x[1,2])), (int(x[0,3]), int(x[1,3])), (255,0,0), 3)
-	# cv2.line(image, (int(x[0,4]), int(x[1,4])), (int(x[0,5]), int(x[1,5])), (255,0,0))
-	# cv2.line(image, (int(x[0,6]), int(x[1,6])), (int(x[0,7]), int(x[1,7])), (255,0,0))
-	# # Show image
-	# cv2.imshow('img', image)
-	# cv2.waitKey()
-
-	return x
-
 
 def viewing_angle(bb3d, pgp):
 	"""
@@ -196,8 +137,8 @@ def write_bb3d(bb3d, pgp, outfile):
 	alpha = viewing_angle(bb3d, pgp)
 
 	outfile.write('%s -1 -1 %.2f %.2f %.2f %.2f %.2f -1 -1 -1 -1000 -1000 -1000 -10 %.2f\n' % 
-		(LABELS[bb3d.label], alpha, bb3d.bb2d.xmin, bb3d.bb2d.ymin, bb3d.bb2d.xmax, bb3d.bb2d.ymax, 
-		bb3d.confidence))
+		(LABELS[bb3d.label], alpha, max(bb3d.bb2d.xmin, 0), max(bb3d.bb2d.ymin, 0), 
+		min(bb3d.bb2d.xmax, 1242), min(bb3d.bb2d.ymax, 375), bb3d.confidence))
 
 
 def translate_file(path_bb3txt, path_pgp, path_out):
