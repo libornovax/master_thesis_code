@@ -39,7 +39,7 @@ CATEGORIES = [
 
 # Colors of the bounding boxes of the categories
 # COLORS = [plt.cm.gist_ncar(i) for i in np.linspace(0, 1, len(CATEGORIES))]
-COLORS = ['r', 'b']
+COLORS = ['#3399FF', '#FF33CC']
 
 # Initialize the LabelMappingManager
 LMM = LabelMappingManager()

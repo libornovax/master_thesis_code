@@ -332,8 +332,8 @@ class PRPlotter(object):
 		"""
 		plt.legend(loc='lower left', prop={'size':13})
 
-		plt.savefig(path_out + '.pdf')
-		plt.savefig(path_out + '.png')
+		plt.savefig(path_out + '.pdf', bbox_inches='tight')
+		plt.savefig(path_out + '.png', bbox_inches='tight')
 
 		# Save each category to a different CSV file
 		for c in range(len(self.categories)):

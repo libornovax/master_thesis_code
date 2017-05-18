@@ -106,8 +106,8 @@ def save_plot(path_out):
 	"""
 	plt.legend(loc='lower left', prop={'size':13})
 
-	plt.savefig(path_out + '.pdf')
-	plt.savefig(path_out + '.png')
+	plt.savefig(path_out + '.pdf', bbox_inches='tight')
+	plt.savefig(path_out + '.png', bbox_inches='tight')
 
 	print('-- Plot saved to: ' + path_out)
 

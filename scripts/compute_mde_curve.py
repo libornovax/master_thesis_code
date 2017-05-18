@@ -23,6 +23,7 @@ import numpy as np
 import matplotlib
 matplotlib.use('Agg')  # Prevents from using X interface for plotting
 from matplotlib import pyplot as plt
+from matplotlib.ticker import FormatStrFormatter
 
 from data.shared.bb3txt import load_bb3txt
 from data.shared.pgp import load_pgp
@@ -251,6 +252,8 @@ class MDEPlotter(object):
 		"""
 		Initializes the plotting canvas for plotting the MDE curves
 		"""
+		fig, ax = plt.subplots()
+		ax.yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
 		plt.xlabel('distance (m)')
 		plt.ylabel('mean distance error (m)')
 		plt.title(self.title)
@@ -335,10 +338,10 @@ class MDEPlotter(object):
 			path_out: Path to the output file(s) (without extension)
 		"""
 		# Reference methods
-		plt.plot(self.thresholds_x, [1.55, 1.7, 2.6, 4.25, 6.5], label='SubCNN', color='#FF3300', linewidth=2)
-		plt.errorbar(self.thresholds_x, [1.55, 1.7, 2.6, 4.25, 6.5], yerr=[0.1, 0.07, 0.15, 0.3, 0.55], color='#FF3300')
-		plt.plot(self.thresholds_x, [1.5, 1.05, 1.8, 2.4, 2.95], label='Deep3DBox', color='#40BF0D', linewidth=2)
-		plt.errorbar(self.thresholds_x, [1.5, 1.05, 1.8, 2.4, 2.95], yerr=[0.1, 0.05, 0.1, 0.13, 0.3], color='#40BF0D')
+		plt.plot(self.thresholds_x, [1.55, 1.7, 2.6, 4.25, 6.5], label='SubCNN', color='#FF3300', linewidth=2, linestyle='--')
+		plt.errorbar(self.thresholds_x, [1.55, 1.7, 2.6, 4.25, 6.5], yerr=[0.1, 0.07, 0.15, 0.3, 0.55], color='#FF3300', linestyle='--')
+		plt.plot(self.thresholds_x, [1.5, 1.05, 1.8, 2.4, 2.95], label='Deep3DBox', color='#40BF0D', linewidth=2, linestyle='--')
+		plt.errorbar(self.thresholds_x, [1.5, 1.05, 1.8, 2.4, 2.95], yerr=[0.1, 0.05, 0.1, 0.13, 0.3], color='#40BF0D', linestyle='--')
 
 
 		plt.axis((8, 52, 0, 9))
@@ -346,8 +349,8 @@ class MDEPlotter(object):
 		plt.xticks(self.thresholds_x, self.thresholds_t)
 		plt.legend(loc='upper left', prop={'size':13})
 
-		plt.savefig(path_out + '.pdf')
-		plt.savefig(path_out + '.png')
+		plt.savefig(path_out + '.pdf', bbox_inches='tight')
+		plt.savefig(path_out + '.png', bbox_inches='tight')
 
 		# Save each category to a different CSV file
 		# for c in range(len(self.categories)):
