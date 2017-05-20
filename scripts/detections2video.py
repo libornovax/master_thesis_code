@@ -118,82 +118,6 @@ class VideoGenerator(object):
 		self.file_sequence.sort()
 
 
-	def _render_3d_boxes(self, iml, mapping, gt=False):
-		"""
-		Renders 3D bounding boxes from the given list on the current image.
-
-		Input:
-			iml:     Image list (either self.iml_gt or self.iml_detections)
-			mapping: Label mapping of the dataset (either self.gt_mapping or self.detections_mapping)
-			gt:      True if the rendered bounding boxes are ground truth
-		"""
-		filename = self.file_list[self.cursor]
-
-		if filename in iml:
-			# Plot the position of the camera into the world coordinates
-			if self.pgps is not None and filename in self.pgps:
-				pgp = self.pgps[filename]
-				# Camera misplacement line
-				self.ax2.plot([pgp.C_3x1[0,0], pgp.C_3x1[0,0]], [-10, 150], color='#CCCCCC', linewidth=4)
-
-			for bb in iml[filename]:
-				if mapping[bb.label] in CATEGORIES and (gt or bb.confidence >= self.confidence):
-					# Index of the category in CATEGORIES
-					id = CATEGORIES.index(mapping[bb.label])
-					color = '#ffd633' if gt else COLORS[id]  # Ground truth has always the same color
-
-					# rect = patches.Rectangle((bb.bb2d.xmin, bb.bb2d.ymin), bb.bb2d.width(), 
-					# 						  bb.bb2d.height(), linewidth=1, edgecolor=color,
-					# 						  facecolor='none')
-					# self.ax1.add_patch(rect)
-
-					if self.pgps is not None:
-						# We have image projection matrices and ground plane - reconstruct the whole
-						# 3d box
-						if filename in self.pgps:
-							pgp = self.pgps[filename]
-
-							# Get all 4 bounding box corners in 3D (FBL FBR RBR RBL FTL FTR RTR RTL)
-							X_3x8 = pgp.reconstruct_bb3d(bb)
-
-							# Draw bb on the xz plane
-							self.ax2.plot([X_3x8[0,0], X_3x8[0,1]], [X_3x8[2,0], X_3x8[2,1]], color='#00FF00', linewidth=2)
-							self.ax2.plot([X_3x8[0,0], X_3x8[0,3]], [X_3x8[2,0], X_3x8[2,3]], color=color, linewidth=2)
-							self.ax2.plot([X_3x8[0,1], X_3x8[0,2]], [X_3x8[2,1], X_3x8[2,2]], color=color, linewidth=2)
-							self.ax2.plot([X_3x8[0,2], X_3x8[0,3]], [X_3x8[2,2], X_3x8[2,3]], color='#FF0000', linewidth=2)
-
-							# Project them back to image
-							x_2x8 = pgp.project_X_to_x(X_3x8)
-
-							# Plot front side
-							self.ax1.plot([x_2x8[0,4], x_2x8[0,5]], [x_2x8[1,4], x_2x8[1,5]], color='g', linewidth=2)
-							self.ax1.plot([x_2x8[0,5], x_2x8[0,1]], [x_2x8[1,5], x_2x8[1,1]], color='g', linewidth=2)
-							self.ax1.plot([x_2x8[0,0], x_2x8[0,1]], [x_2x8[1,0], x_2x8[1,1]], color='g', linewidth=2)
-							self.ax1.plot([x_2x8[0,0], x_2x8[0,4]], [x_2x8[1,0], x_2x8[1,4]], color='g', linewidth=2)
-							# Plot rear side
-							self.ax1.plot([x_2x8[0,2], x_2x8[0,3]], [x_2x8[1,2], x_2x8[1,3]], color='r', linewidth=2)
-							self.ax1.plot([x_2x8[0,7], x_2x8[0,3]], [x_2x8[1,7], x_2x8[1,3]], color='r', linewidth=2)
-							self.ax1.plot([x_2x8[0,7], x_2x8[0,6]], [x_2x8[1,7], x_2x8[1,6]], color='r', linewidth=2)
-							self.ax1.plot([x_2x8[0,6], x_2x8[0,2]], [x_2x8[1,6], x_2x8[1,2]], color='r', linewidth=2)
-							# Plot connections
-							self.ax1.plot([x_2x8[0,4], x_2x8[0,7]], [x_2x8[1,4], x_2x8[1,7]], color=color, linewidth=2)
-							self.ax1.plot([x_2x8[0,5], x_2x8[0,6]], [x_2x8[1,5], x_2x8[1,6]], color=color, linewidth=2)
-							self.ax1.plot([x_2x8[0,1], x_2x8[0,2]], [x_2x8[1,1], x_2x8[1,2]], color=color, linewidth=2)
-							self.ax1.plot([x_2x8[0,0], x_2x8[0,3]], [x_2x8[1,0], x_2x8[1,3]], color=color, linewidth=2)
-
-						else:
-							print('WARNING: PGP entry not found for image: "' + filename + '"')
-						
-					else:
-						# Plot the available corners
-						self.ax1.plot([bb.fblx, bb.fbrx], [bb.fbly, bb.fbry], color='g', linewidth=2)
-						self.ax1.plot([bb.fblx, bb.fblx], [bb.fbly, bb.ftly], color='g', linewidth=2)
-						self.ax1.plot([bb.fblx, bb.rblx], [bb.fbly, bb.rbly], color=color, linewidth=2)
-
-					txt = mapping[bb.label] if gt else mapping[bb.label] + ' %.3f'%(bb.confidence)
-					self.ax1.text(bb.fblx, bb.ftly-5, txt, fontsize=15, color=color)
-
-
 	def _plot_bboxes(self, image, filename):
 		"""
 		Plots bounding boxes into the image.
@@ -237,8 +161,8 @@ class VideoGenerator(object):
 					cv2.line(image, (ri(x_2x8[0,1]), ri(x_2x8[1,1])), (ri(x_2x8[0,2]), ri(x_2x8[1,2])), color, 2)
 					cv2.line(image, (ri(x_2x8[0,0]), ri(x_2x8[1,0])), (ri(x_2x8[0,3]), ri(x_2x8[1,3])), color, 2)
 
-					txt = self.detections_mapping[bb.label] + ' %.3f'%(bb.confidence)
-					cv2.putText(image, txt, (ri(bb.fblx), ri(bb.ftly-5)), cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, color)
+					# txt = self.detections_mapping[bb.label] + ' %.3f'%(bb.confidence)
+					# cv2.putText(image, txt, (ri(bb.fblx), ri(bb.ftly-5)), cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, color)
 
 		else:
 			# Plot 2D bounding boxes
@@ -247,8 +171,8 @@ class VideoGenerator(object):
 					color = hex2bgr(COLORS[self.detections_mapping[bb.label]])
 					cv2.rectangle(image, (ri(bb.xmin), ri(bb.ymin)), (ri(bb.xmax), ri(bb.ymax)), color, 2)
 
-					txt = self.detections_mapping[bb.label] + ' %.3f'%(bb.confidence)
-					cv2.putText(image, txt, (ri(bb.xmin), ri(bb.ymin-5)), cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, color)
+					# txt = self.detections_mapping[bb.label] + ' %.3f'%(bb.confidence)
+					# cv2.putText(image, txt, (ri(bb.xmin), ri(bb.ymin-5)), cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, color)
 
 
 	def generate_video(self, path_out):
