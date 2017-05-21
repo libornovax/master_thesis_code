@@ -1,14 +1,14 @@
 """
-Generates a video file from the given detection file. Either 2D bounding boxes are plotted into
-the image if BBTXT or BB3TXT file is supplied or 3D bounding boxes if BB3TXT and the corresponding
-PGP file is supplied.
+Generates image files with printed bounding boxes from the given detection file. Either 2D bounding
+boxes are plotted into the images if BBTXT or BB3TXT file is supplied or 3D bounding boxes if
+BB3TXT and the corresponding PGP file is supplied.
 
 ----------------------------------------------------------------------------------------------------
-python detections2video.py path/detections.bbtxt detection_mapping path/out.mp4
+python detections2images.py path/detections.bbtxt detection_mapping path/out
 ----------------------------------------------------------------------------------------------------
 """
 
-__date__   = '05/19/2017'
+__date__   = '05/20/2017'
 __author__ = 'Libor Novak'
 __email__  = 'novakli2@fel.cvut.cz'
 
@@ -71,15 +71,13 @@ def get_path_to_image(path_image, path_datasets=None):
 class VideoGenerator(object):
 	"""
 	"""
-	def __init__(self, path_detections, detections_mapping, path_file_list, confidence, fps, offset=0, 
+	def __init__(self, path_detections, detections_mapping, confidence, offset=0, 
 				 length=99999999, path_datasets=None, path_pgp=None):
 		"""
 		Input:
 			path_detections:    Path to the BBTXT or BB3TXT file with detections
 			detections_mapping: Name of the mapping of the path_detections file
-			path_file_list:     Path to the TXT file list with all frames
 			confidence:         Minimum confidence of a detection to be displayed
-			fps:                Frame rate of the generated video
 			offset:             Offset of the video from the start (in frames)
 			length:             Length of the video in frames
 			path_datasets:      Path to the "datasets" folder on this machine, replaces the path
@@ -90,7 +88,6 @@ class VideoGenerator(object):
 		super(VideoGenerator, self).__init__()
 		
 		self.confidence    = confidence
-		self.fps           = fps
 		self.offset        = offset
 		self.max_length    = length
 		self.path_datasets = path_datasets
@@ -108,17 +105,15 @@ class VideoGenerator(object):
 			self.iml_detections = load_bbtxt(path_detections)
 			self.pgps = None
 
-		self._load_file_list(path_file_list)
+		self._create_sorted_sequence()
 
 
-	def _load_file_list(self, path_file_list):
+	def _create_sorted_sequence(self):
 		"""
-		Creates a sorted list of files.
+		Creates a sorted list of files, which we will be cycling through.
 		"""
-		self.file_sequence = []
-		with open(path_file_list, 'r') as infile:
-			for line in infile:
-				self.file_sequence.append(line.rstrip('\n'))
+		self.file_sequence = self.iml_detections.keys()
+		self.file_sequence.sort()
 
 
 	def _plot_bboxes(self, image, filename):
@@ -129,9 +124,6 @@ class VideoGenerator(object):
 			image: np.array (cv2.imread read) image
 			filename: Path to the image
 		"""
-		if filename not in self.iml_detections:
-			return
-
 		bbs = self.iml_detections[filename]
 
 		if self.pgps is not None:
@@ -181,20 +173,18 @@ class VideoGenerator(object):
 					# cv2.putText(image, txt, (ri(bb.xmin), ri(bb.ymin-5)), cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, color)
 
 
-	def generate_video(self, path_out):
+	def generate_images(self, path_out):
 		"""
-		Generates the video from the currently opened BBTXT or BB3TXT file.
+		Generates images with detections from the currently opened BBTXT or BB3TXT file.
 
 		Input:
-			path_out: Path to the output MP4 file
+			path_out: Path to the output folder
 		"""
-		img = cv2.imread(get_path_to_image(self.file_sequence[0], self.path_datasets))
-		height, width, layers =  img.shape
-
-		fourcc = cv2.VideoWriter_fourcc('m','p','4','v')
-		video = cv2.VideoWriter(path_out, fourcc, self.fps, (width, height))
+		if not os.path.exists(path_out):
+			os.makedirs(path_out)
 
 		length = 0
+
 		for i in range(len(self.file_sequence)):
 			if i < self.offset: continue
 			if length >= self.max_length: break
@@ -206,14 +196,9 @@ class VideoGenerator(object):
 			# Plot the bounding boxes into the image
 			self._plot_bboxes(image, filename)
 
-			# Add the image to the video sequence
-			if image.shape != img.shape:
-				image = cv2.resize(image, (height, width))
-
-			video.write(image)
-
-		video.release()
-		cv2.destroyAllWindows()
+			# Write the image
+			filename_out = os.path.join(path_out, os.path.basename(filename))
+			cv2.imwrite(filename_out, image)
 
 
 
@@ -242,24 +227,20 @@ def parse_arguments():
 	"""
 	Parse input options of the script.
 	"""
-	parser = argparse.ArgumentParser(description='Generate a video from detections.')
+	parser = argparse.ArgumentParser(description='Generate images with detections from detections.')
 	parser.add_argument('path_detections', metavar='path_detections', type=str,
 						help='Path to the BBTXT or BB3TXT file with detections to be shown')
 	parser.add_argument('detections_mapping', metavar='detections_mapping', type=str,
 						help='Label mapping of the detections file. One of ' \
 						+ str(LMM.available_mappings()))
-	parser.add_argument('path_file_list', metavar='path_file_list', type=str,
-						help='Path to the TXT file list with all video frames')
 	parser.add_argument('path_out', metavar='path_out', type=str,
-						help='Path to the output MP4 file')
+						help='Path to the output folder, which will contain the generated images')
 	parser.add_argument('--confidence', type=float, default=0.5,
 						help='Minimum confidence of shown bounding boxes')
-	parser.add_argument('--fps', type=int, default=24,
-						help='Frame rate of the generated video')
 	parser.add_argument('--offset', type=int, default=0,
-						help='Offsets the start of the video by the given number of frames')
+						help='Offsets the start of the sequence by the given number of frames')
 	parser.add_argument('--length', type=int, default=999999999,
-						help='Length of the video (in frames)')
+						help='Number of converted images')
 	parser.add_argument('--path_datasets', type=str, default=None,
 						help='Path to the "datasets" folder on this machine - will be used to ' \
 						'replace the path from the BBTXT and BB3TXT files so we could show the ' \
@@ -270,19 +251,11 @@ def parse_arguments():
 
 	args = parser.parse_args()
 
-	if not check_path(args.path_detections) or not check_path(args.path_file_list) or \
+	if not check_path(args.path_detections) or \
 			(args.path_datasets is not None and not check_path(args.path_datasets, True)) or \
 			(args.path_pgp is not None and not check_path(args.path_pgp)):
 		parser.print_help()
 		exit(1)
-
-	if os.path.exists(args.path_out):
-		check = raw_input('The output file "' + args.path_out + '" already exists!\nDo you want to rewrite it? [y/n]\n')
-		if check != 'y':
-			print('Video generation aborted.')
-			exit(1)
-		else:
-			os.remove(args.path_out)
 
 	return args
 
@@ -290,13 +263,12 @@ def parse_arguments():
 def main():
 	args = parse_arguments()
 
-	print('-- DETECTIONS TO VIDEO CONVERTER')
+	print('-- DETECTIONS TO IMAGES CONVERTER')
 
-	vg = VideoGenerator(args.path_detections, args.detections_mapping, args.path_file_list, 
-						args.confidence, args.fps, args.offset, args.length, args.path_datasets, 
-						args.path_pgp)
+	vg = VideoGenerator(args.path_detections, args.detections_mapping, args.confidence, 
+						args.offset, args.length, args.path_datasets, args.path_pgp)
 	
-	vg.generate_video(args.path_out)
+	vg.generate_images(args.path_out)
 
 
 if __name__ == '__main__':
