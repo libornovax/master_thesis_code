@@ -16,6 +16,11 @@ __email__  = 'novakli2@fel.cvut.cz'
 import argparse
 import os
 import cv2
+import matplotlib.patches as patches
+
+import matplotlib
+matplotlib.use('Agg')  # Prevents from using X interface for plotting
+from matplotlib import pyplot as plt
 
 from data.shared.bb3txt import load_bb3txt
 from data.shared.bbtxt import load_bbtxt
@@ -68,7 +73,7 @@ def get_path_to_image(path_image, path_datasets=None):
 #                                             CLASSES                                              # 
 ####################################################################################################
 
-class VideoGenerator(object):
+class ImageGenerator(object):
 	"""
 	"""
 	def __init__(self, path_detections, detections_mapping, confidence, offset=0, 
@@ -85,7 +90,7 @@ class VideoGenerator(object):
 			path_pgp:           Path to the PGP file with image projection matrices and ground plane
 			                    equations
 		"""
-		super(VideoGenerator, self).__init__()
+		super(ImageGenerator, self).__init__()
 		
 		self.confidence    = confidence
 		self.offset        = offset
@@ -132,7 +137,15 @@ class VideoGenerator(object):
 				print('ERROR: Missing PGP for file "' + filename + '"!')
 				exit(2)
 
+			plt.cla()
+
 			pgp = self.pgps[filename]
+
+			plt.plot([pgp.C_3x1[0,0], pgp.C_3x1[0,0]], [-10, 150], color='#CCCCCC', linewidth=4, zorder=0)
+			rect = patches.Rectangle((pgp.C_3x1[0,0]-1.25, pgp.C_3x1[2,0]-2.5), 2.5, 5, linewidth=1, 
+									 edgecolor='#000000', facecolor='#000000')
+			ax = plt.gca()
+			ax.add_patch(rect)
 
 			for bb in bbs:
 				if bb.confidence >= self.confidence:
@@ -142,6 +155,12 @@ class VideoGenerator(object):
 					x_2x8 = pgp.project_X_to_x(X_3x8)
 
 					color = hex2bgr(COLORS[self.detections_mapping[bb.label]])
+
+					# Draw bb on the xz plane
+					plt.plot([X_3x8[0,0], X_3x8[0,1]], [X_3x8[2,0], X_3x8[2,1]], color='#00FF00', linewidth=2)
+					plt.plot([X_3x8[0,0], X_3x8[0,3]], [X_3x8[2,0], X_3x8[2,3]], color=COLORS[self.detections_mapping[bb.label]], linewidth=2)
+					plt.plot([X_3x8[0,1], X_3x8[0,2]], [X_3x8[2,1], X_3x8[2,2]], color=COLORS[self.detections_mapping[bb.label]], linewidth=2)
+					plt.plot([X_3x8[0,2], X_3x8[0,3]], [X_3x8[2,2], X_3x8[2,3]], color='#FF0000', linewidth=2)
 
 					# Plot front side
 					cv2.line(image, (ri(x_2x8[0,4]), ri(x_2x8[1,4])), (ri(x_2x8[0,5]), ri(x_2x8[1,5])), (0,255,0), 2)
@@ -199,6 +218,11 @@ class VideoGenerator(object):
 			# Write the image
 			filename_out = os.path.join(path_out, os.path.basename(filename))
 			cv2.imwrite(filename_out, image)
+			if self.pgps is not None:
+				plt.axis('equal')
+				plt.axis((-40, 40, -5, 75))
+				plt.subplots_adjust(left=0.0, right=1.0, top=1.0, bottom=0.0)
+				plt.savefig(os.path.splitext(filename_out)[0] + '_xz.pdf', bbox_inches='tight')
 
 
 
@@ -265,7 +289,7 @@ def main():
 
 	print('-- DETECTIONS TO IMAGES CONVERTER')
 
-	vg = VideoGenerator(args.path_detections, args.detections_mapping, args.confidence, 
+	vg = ImageGenerator(args.path_detections, args.detections_mapping, args.confidence, 
 						args.offset, args.length, args.path_datasets, args.path_pgp)
 	
 	vg.generate_images(args.path_out)
