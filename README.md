@@ -8,6 +8,17 @@ For details about the method see [PDF with the Master's thesis](master_thesis.pd
 
 
 ### 2D and 3D Bounding Box Detection Video
-I created a video showing the output of a trained `r_2_x2_to_x16_s2` DNN on unseen data - sequences from the KITTI dataset, which you can find on [YouTube](https://youtu.be/O9OMIL0NwYk).
+I created a video showing the output of a trained `r_2_x2_to_x16_s2` DNN on unseen data - sequences from the KITTI dataset, which you can find on [YouTube](https://youtu.be/O9OMIL0NwYk) ([https://youtu.be/O9OMIL0NwYk](https://youtu.be/O9OMIL0NwYk)).
 
-[![YouTube video with detections](https://img.youtube.com/vi/O9OMIL0NwYk/0.jpg)](https://youtu.be/O9OMIL0NwYk)
+[![YouTube video with detections](mockup.png)](https://youtu.be/O9OMIL0NwYk)
+
+### Network Models
+The final 2D and 3D detection network architectures can be found in [caffe/models](caffe/models). There are 2 networks with the same structure:
+  * `macc_0.3_r2_x2_to_x16_s2` - 2D bounding box detection network
+  * `macc3d_0.3_r2_x2_to_x16_s2` - 3D bounding box detection network
+
+### Testing
+There are several executables for examination of the network testing output under [caffe/examples/ln](caffe/examples/ln). The fact that their names contain 'pyramid' is a bit misleading as now the image pyramid has only one scale and the detectors perform multiscale detection by themseslves.
+  * `macc_pyramid_test` - running 2D detector
+  * `macc3d_pyramid_test` - running 3D detector
+  * `detect_pyramid` - displays response maps of a 2D or 3D detector
