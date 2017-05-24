@@ -1,11 +1,11 @@
-net: "macc_0.3_r2_x2_to_x16_s2_train_val.prototxt"
+net: "macc3d_0.3_r2_x2_to_x16_s2_train_val.prototxt"
 
 type: "SGD"
 
 iter_size: 4
 
-test_iter: 600
-test_interval: 1000
+#test_iter: 600
+#test_interval: 1000
 display: 10
 
 base_lr: 0.00000078125
@@ -17,6 +17,6 @@ max_iter: 100000
 momentum: 0.9
 weight_decay: 0.0005
 snapshot: 10000
-snapshot_prefix: "macc_0.3_r2_x2_to_x16_s2"
+snapshot_prefix: "macc3d_0.3_r2_x2_to_x16_s2"
 
 solver_mode: GPU

@@ -1,0 +1,745 @@
+name: "macc3d_0.3_r2_x2_to_x16_s2"
+
+layer {
+  name: "data"
+  type: "BB3TXTData"
+  top: "data"
+  top: "label"
+  include {
+    phase: TRAIN
+  }
+  image_data_param {
+    source: "/datasets/kitti/labels/train_no_truncated_car.bb3txt"
+    batch_size: 8
+  }
+  bbtxt_param {
+    width: 512
+    height: 512
+    reference_size_min: 23
+    reference_size_max: 440
+  }
+}
+
+# -------------------------------------- NETWORK STRUCTURE --------------------------------------- #
+# --------------------------------------------- x  1 --------------------------------------------- #
+layer {
+  # -----------------------  FOV 3 x 3  (3+0=3)
+  name: "conv_x1_1"
+  type: "Convolution"
+  bottom: "data"
+  top: "conv_x1_1"
+  param {
+    lr_mult: 1
+    decay_mult: 1
+  }
+  param {
+    lr_mult: 2
+    decay_mult: 0
+  }
+  convolution_param {
+    num_output: 64
+    kernel_size: 3
+    pad: 1
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+      value: 0
+    }
+  }
+}
+layer {
+  name: "relu_conv_x1_1"
+  type: "ReLU"
+  bottom: "conv_x1_1"
+  top: "conv_x1_1"
+}
+layer {
+  # -----------------------  FOV 9 x 9  (9+0=9)
+  name: "conv_x1_2"
+  type: "Convolution"
+  bottom: "conv_x1_1"
+  top: "conv_x1_2"
+  param {
+    lr_mult: 1
+    decay_mult: 1
+  }
+  param {
+    lr_mult: 2
+    decay_mult: 0
+  }
+  convolution_param {
+    num_output: 64
+    kernel_size: 3
+    pad: 3
+    dilation: 3
+    stride: 2
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+      value: 0
+    }
+  }
+}
+layer {
+  name: "relu_conv_x1_2"
+  type: "ReLU"
+  bottom: "conv_x1_2"
+  top: "conv_x1_2"
+}
+# --------------------------------------------- x  2 --------------------------------------------- #
+layer {
+  # -----------------------  FOV 14 x 14  (6+8=14)
+  name: "conv_x2_1"
+  type: "Convolution"
+  bottom: "conv_x1_2"
+  top: "conv_x2_1"
+  param {
+    lr_mult: 1
+    decay_mult: 1
+  }
+  param {
+    lr_mult: 2
+    decay_mult: 0
+  }
+  convolution_param {
+    num_output: 128
+    kernel_size: 3
+    pad: 1
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+      value: 0
+    }
+  }
+}
+layer {
+  name: "relu_conv_x2_1"
+  type: "ReLU"
+  bottom: "conv_x2_1"
+  top: "conv_x2_1"
+}
+layer {
+  # -----------------------  FOV 22 x 22  (14+8=22)
+  name: "conv_x2_2"
+  type: "Convolution"
+  bottom: "conv_x2_1"
+  top: "conv_x2_2"
+  param {
+    lr_mult: 1
+    decay_mult: 1
+  }
+  param {
+    lr_mult: 2
+    decay_mult: 0
+  }
+  convolution_param {
+    num_output: 128
+    kernel_size: 3
+    pad: 2
+    dilation: 2
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+      value: 0
+    }
+  }
+}
+layer {
+  name: "relu_conv_x2_2"
+  type: "ReLU"
+  bottom: "conv_x2_2"
+  top: "conv_x2_2"
+}
+layer {
+  # -----------------------  FOV 38 x 38  (30+8=38)
+  name: "conv_x2_3"
+  type: "Convolution"
+  bottom: "conv_x2_2"
+  top: "conv_x2_3"
+  param {
+    lr_mult: 1
+    decay_mult: 1
+  }
+  param {
+    lr_mult: 2
+    decay_mult: 0
+  }
+  convolution_param {
+    num_output: 128
+    kernel_size: 3
+    pad: 4
+    dilation: 4
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+      value: 0
+    }
+  }
+}
+layer {
+  name: "relu_conv_x2_3"
+  type: "ReLU"
+  bottom: "conv_x2_3"
+  top: "conv_x2_3"
+}
+layer {
+  # -----------------------  FOV 66 x 66  (58+8=66)
+  name: "conv_x2_4"
+  type: "Convolution"
+  bottom: "conv_x2_3"
+  top: "conv_x2_4"
+  param {
+    lr_mult: 1
+    decay_mult: 1
+  }
+  param {
+    lr_mult: 2
+    decay_mult: 0
+  }
+  convolution_param {
+    num_output: 128
+    kernel_size: 3
+    pad: 7
+    dilation: 7
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+      value: 0
+    }
+  }
+}
+layer {
+  name: "relu_conv_x2_4"
+  type: "ReLU"
+  bottom: "conv_x2_4"
+  top: "conv_x2_4"
+}
+# --------------------------------------------- x  4 --------------------------------------------- #
+layer {
+  name: "pool_x4"
+  type: "Pooling"
+  bottom: "conv_x2_4"
+  top: "pool_x4"
+  pooling_param {
+    pool: MAX
+    kernel_size: 2
+    stride: 2
+  }
+}
+layer {
+  # -----------------------  FOV 76 x 76  (12+64=76)
+  name: "conv_x4_1"
+  type: "Convolution"
+  bottom: "pool_x4"
+  top: "conv_x4_1"
+  param {
+    lr_mult: 1
+    decay_mult: 1
+  }
+  param {
+    lr_mult: 2
+    decay_mult: 0
+  }
+  convolution_param {
+    num_output: 256
+    kernel_size: 3
+    pad: 1
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+      value: 0
+    }
+  }
+}
+layer {
+  name: "relu_conv_x4_1"
+  type: "ReLU"
+  bottom: "conv_x4_1"
+  top: "conv_x4_1"
+}
+layer {
+  # -----------------------  FOV 92 x 92  (28+64=92)
+  name: "conv_x4_2"
+  type: "Convolution"
+  bottom: "conv_x4_1"
+  top: "conv_x4_2"
+  param {
+    lr_mult: 1
+    decay_mult: 1
+  }
+  param {
+    lr_mult: 2
+    decay_mult: 0
+  }
+  convolution_param {
+    num_output: 256
+    kernel_size: 3
+    pad: 2
+    dilation: 2
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+      value: 0
+    }
+  }
+}
+layer {
+  name: "relu_conv_x4_2"
+  type: "ReLU"
+  bottom: "conv_x4_2"
+  top: "conv_x4_2"
+}
+layer {
+  # -----------------------  FOV 124 x 124  (60+64=124)
+  name: "conv_x4_3"
+  type: "Convolution"
+  bottom: "conv_x4_2"
+  top: "conv_x4_3"
+  param {
+    lr_mult: 1
+    decay_mult: 1
+  }
+  param {
+    lr_mult: 2
+    decay_mult: 0
+  }
+  convolution_param {
+    num_output: 256
+    kernel_size: 3
+    pad: 4
+    dilation: 4
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+      value: 0
+    }
+  }
+}
+layer {
+  name: "relu_conv_x4_3"
+  type: "ReLU"
+  bottom: "conv_x4_3"
+  top: "conv_x4_3"
+}
+# --------------------------------------------- x  8 --------------------------------------------- #
+layer {
+  name: "pool_x8"
+  type: "Pooling"
+  bottom: "conv_x4_3"
+  top: "pool_x8"
+  pooling_param {
+    pool: MAX
+    kernel_size: 2
+    stride: 2
+  }
+}
+layer {
+  # -----------------------  FOV 144 x 144  (24+120=144)
+  name: "conv_x8_1"
+  type: "Convolution"
+  bottom: "pool_x8"
+  top: "conv_x8_1"
+  param {
+    lr_mult: 1
+    decay_mult: 1
+  }
+  param {
+    lr_mult: 2
+    decay_mult: 0
+  }
+  convolution_param {
+    num_output: 512
+    kernel_size: 3
+    pad: 1
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+      value: 0
+    }
+  }
+}
+layer {
+  name: "relu_conv_x8_1"
+  type: "ReLU"
+  bottom: "conv_x8_1"
+  top: "conv_x8_1"
+}
+layer {
+  # -----------------------  FOV 176 x 176  (56+120=176)
+  name: "conv_x8_2"
+  type: "Convolution"
+  bottom: "conv_x8_1"
+  top: "conv_x8_2"
+  param {
+    lr_mult: 1
+    decay_mult: 1
+  }
+  param {
+    lr_mult: 2
+    decay_mult: 0
+  }
+  convolution_param {
+    num_output: 512
+    kernel_size: 3
+    pad: 2
+    dilation: 2
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+      value: 0
+    }
+  }
+}
+layer {
+  name: "relu_conv_x8_2"
+  type: "ReLU"
+  bottom: "conv_x8_2"
+  top: "conv_x8_2"
+}
+layer {
+  # -----------------------  FOV 240 x 240  (120+120=240)
+  name: "conv_x8_3"
+  type: "Convolution"
+  bottom: "conv_x8_2"
+  top: "conv_x8_3"
+  param {
+    lr_mult: 1
+    decay_mult: 1
+  }
+  param {
+    lr_mult: 2
+    decay_mult: 0
+  }
+  convolution_param {
+    num_output: 512
+    kernel_size: 3
+    pad: 4
+    dilation: 4
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+      value: 0
+    }
+  }
+}
+layer {
+  name: "relu_conv_x8_3"
+  type: "ReLU"
+  bottom: "conv_x8_3"
+  top: "conv_x8_3"
+}
+# --------------------------------------------- x 16 --------------------------------------------- #
+layer {
+  name: "pool_x16"
+  type: "Pooling"
+  bottom: "conv_x8_3"
+  top: "pool_x16"
+  pooling_param {
+    pool: MAX
+    kernel_size: 2
+    stride: 2
+  }
+}
+layer {
+  # -----------------------  FOV 280 x 280  (48+232=280)
+  name: "conv_x16_1"
+  type: "Convolution"
+  bottom: "pool_x16"
+  top: "conv_x16_1"
+  param {
+    lr_mult: 1
+    decay_mult: 1
+  }
+  param {
+    lr_mult: 2
+    decay_mult: 0
+  }
+  convolution_param {
+    num_output: 512
+    kernel_size: 3
+    pad: 1
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+      value: 0
+    }
+  }
+}
+layer {
+  name: "relu_conv_x16_1"
+  type: "ReLU"
+  bottom: "conv_x16_1"
+  top: "conv_x16_1"
+}
+layer {
+  # -----------------------  FOV 344 x 344  (112+232=344)
+  name: "conv_x16_2"
+  type: "Convolution"
+  bottom: "conv_x16_1"
+  top: "conv_x16_2"
+  param {
+    lr_mult: 1
+    decay_mult: 1
+  }
+  param {
+    lr_mult: 2
+    decay_mult: 0
+  }
+  convolution_param {
+    num_output: 512
+    kernel_size: 3
+    pad: 2
+    dilation: 2
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+      value: 0
+    }
+  }
+}
+layer {
+  name: "relu_conv_x16_2"
+  type: "ReLU"
+  bottom: "conv_x16_2"
+  top: "conv_x16_2"
+}
+layer {
+  # -----------------------  FOV 472 x 472  (240+232=472)
+  name: "conv_x16_3"
+  type: "Convolution"
+  bottom: "conv_x16_2"
+  top: "conv_x16_3"
+  param {
+    lr_mult: 1
+    decay_mult: 1
+  }
+  param {
+    lr_mult: 2
+    decay_mult: 0
+  }
+  convolution_param {
+    num_output: 512
+    kernel_size: 3
+    pad: 4
+    dilation: 4
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+      value: 0
+    }
+  }
+}
+layer {
+  name: "relu_conv_x16_3"
+  type: "ReLU"
+  bottom: "conv_x16_3"
+  top: "conv_x16_3"
+}
+layer {
+  # -----------------------  ACCUMULATOR
+  # -----------------------  SCALE 1/2  (FOV 66 x 66)
+  # -----------------------  Ideal bounding box size: 33x33 px
+  name: "acc_x2"
+  type: "Convolution"
+  bottom: "conv_x2_4"
+  top: "acc_x2"
+  param {
+    lr_mult: 1
+    decay_mult: 1
+  }
+  param {
+    lr_mult: 2
+    decay_mult: 0
+  }
+  convolution_param {
+    num_output: 8
+    kernel_size: 1
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+      value: 0
+    }
+  }
+}
+layer {
+  # -----------------------  ACCUMULATOR
+  # -----------------------  SCALE 1/4  (FOV 124 x 124)
+  # -----------------------  Ideal bounding box size: 66x66 px
+  name: "acc_x4"
+  type: "Convolution"
+  bottom: "conv_x4_3"
+  top: "acc_x4"
+  param {
+    lr_mult: 1
+    decay_mult: 1
+  }
+  param {
+    lr_mult: 2
+    decay_mult: 0
+  }
+  convolution_param {
+    num_output: 8
+    kernel_size: 1
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+      value: 0
+    }
+  }
+}
+layer {
+  # -----------------------  ACCUMULATOR
+  # -----------------------  SCALE 1/8  (FOV 240 x 240)
+  # -----------------------  Ideal bounding box size: 133x133 px
+  name: "acc_x8"
+  type: "Convolution"
+  bottom: "conv_x8_3"
+  top: "acc_x8"
+  param {
+    lr_mult: 1
+    decay_mult: 1
+  }
+  param {
+    lr_mult: 2
+    decay_mult: 0
+  }
+  convolution_param {
+    num_output: 8
+    kernel_size: 1
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+      value: 0
+    }
+  }
+}
+layer {
+  # -----------------------  ACCUMULATOR
+  # -----------------------  SCALE 1/16  (FOV 472 x 472)
+  # -----------------------  Ideal bounding box size: 266x266 px
+  name: "acc_x16"
+  type: "Convolution"
+  bottom: "conv_x16_3"
+  top: "acc_x16"
+  param {
+    lr_mult: 1
+    decay_mult: 1
+  }
+  param {
+    lr_mult: 2
+    decay_mult: 0
+  }
+  convolution_param {
+    num_output: 8
+    kernel_size: 1
+    weight_filler {
+      type: "xavier"
+    }
+    bias_filler {
+      type: "constant"
+      value: 0
+    }
+  }
+}
+
+# --------------------------------------------- LOSS --------------------------------------------- #
+layer {
+  # -----------------------  SCALE 1/2  (FOV 66 x 66)
+  # -----------------------  Ideal bounding box size: 33x33 px
+  name: "loss_x2"
+  type: "BB3TXTLoss"
+  bottom: "label"
+  bottom: "acc_x2"
+  top: "loss_x2"
+  accumulator_loss_param {
+    radius: 2
+    downsampling: 2
+    negative_ratio: 30
+    circle_ratio: 0.300000
+    bounds_overlap: 0.33
+  }
+}
+layer {
+  # -----------------------  SCALE 1/4  (FOV 124 x 124)
+  # -----------------------  Ideal bounding box size: 66x66 px
+  name: "loss_x4"
+  type: "BB3TXTLoss"
+  bottom: "label"
+  bottom: "acc_x4"
+  top: "loss_x4"
+  accumulator_loss_param {
+    radius: 2
+    downsampling: 4
+    negative_ratio: 30
+    circle_ratio: 0.300000
+    bounds_overlap: 0.33
+  }
+}
+layer {
+  # -----------------------  SCALE 1/8  (FOV 240 x 240)
+  # -----------------------  Ideal bounding box size: 133x133 px
+  name: "loss_x8"
+  type: "BB3TXTLoss"
+  bottom: "label"
+  bottom: "acc_x8"
+  top: "loss_x8"
+  accumulator_loss_param {
+    radius: 2
+    downsampling: 8
+    negative_ratio: 30
+    circle_ratio: 0.300000
+    bounds_overlap: 0.33
+  }
+}
+layer {
+  # -----------------------  SCALE 1/16  (FOV 472 x 472)
+  # -----------------------  Ideal bounding box size: 266x266 px
+  name: "loss_x16"
+  type: "BB3TXTLoss"
+  bottom: "label"
+  bottom: "acc_x16"
+  top: "loss_x16"
+  accumulator_loss_param {
+    radius: 2
+    downsampling: 16
+    negative_ratio: 30
+    circle_ratio: 0.300000
+    bounds_overlap: 0.33
+  }
+}
