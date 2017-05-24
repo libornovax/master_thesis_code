@@ -19,6 +19,6 @@ The final 2D and 3D detection network architectures can be found in [caffe/model
 
 ### Testing
 There are several executables for examination of the network testing output under [caffe/examples/ln](caffe/examples/ln). The fact that their names contain 'pyramid' is a bit misleading as now the image pyramid has only one scale and the detectors perform multiscale detection by themseslves.
-  * `macc_pyramid_test` - running 2D detector
-  * `macc3d_pyramid_test` - running 3D detector
-  * `detect_pyramid` - displays response maps of a 2D or 3D detector
+  * `macc_pyramid_test` - running a 2D detector
+  * `macc3d_pyramid_test` - running a 3D detector
+  * `detect_pyramid` - displays response maps of a 2D or a 3D detector
