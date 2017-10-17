@@ -154,7 +154,7 @@ macro(caffe_cuda_compile objlist_variable)
     list(APPEND CUDA_NVCC_FLAGS -Xcompiler -Wno-unused-function)
   endif()
 
-  list(APPEND CUDA_NVCC_FLAGS -std=c++11)
+  #list(APPEND CUDA_NVCC_FLAGS -std=c++11)
 
   cuda_compile(cuda_objcs ${ARGN})
 
