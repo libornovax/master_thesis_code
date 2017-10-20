@@ -40,12 +40,12 @@ void BB3TXTBBLayer<Dtype>::Forward_cpu (const vector<Blob<Dtype>*> &bottom, cons
                     if (c == 1 || c == 3 || c == 5)
                     {
                         // fblx, fbrx, rblx
-                        *top_data = downsampling*j + ideal_size * (*bottom_data - Dtype(0.5f));
+                        *top_data = int(downsampling*(j+0.5f)) + ideal_size * (*bottom_data - Dtype(0.5f));
                     }
                     else // (c == 2 || c == 4 || c == 6 || c == 7)
                     {
                         // fbly, fbry, rbly, ftly
-                        *top_data = downsampling*i + ideal_size * (*bottom_data - Dtype(0.5f));
+                        *top_data = int(downsampling*(i+0.5f)) + ideal_size * (*bottom_data - Dtype(0.5f));
                     }
 
                     bottom_data++;

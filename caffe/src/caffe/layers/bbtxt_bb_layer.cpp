@@ -39,12 +39,12 @@ void BBTXTBBLayer<Dtype>::Forward_cpu (const vector<Blob<Dtype>*> &bottom, const
                     if (c == 1 || c == 3)
                     {
                         // xmin, xmax
-                        *top_data = downsampling*j + ideal_size * (*bottom_data - Dtype(0.5f));
+                        *top_data = int(downsampling*(j+0.5f)) + ideal_size * (*bottom_data - Dtype(0.5f));
                     }
                     else // (c == 2 || c == 4)
                     {
                         // ymin, ymax
-                        *top_data = downsampling*i + ideal_size * (*bottom_data - Dtype(0.5f));
+                        *top_data = int(downsampling*(i+0.5f)) + ideal_size * (*bottom_data - Dtype(0.5f));
                     }
 
                     bottom_data++;
